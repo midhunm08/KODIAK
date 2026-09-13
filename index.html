@@ -1,195 +1,265 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KODIAK</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KODIAK</title>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="style.css">
 
-  <style>
-    * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #0f1115;
-      color: white;
-      min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-
-    .box {
-      width: 90%;
-      max-width: 400px;
-      background: #181b22;
-      padding: 30px;
-      border-radius: 18px;
-    }
-
-    h1 {
-      text-align: center;
-      letter-spacing: 4px;
-      margin-bottom: 30px;
-    }
-
-    input, button {
-      width: 100%;
-      padding: 14px;
-      margin-top: 12px;
-      border-radius: 10px;
-      border: none;
-      font-size: 16px;
-    }
-
-    input {
-      background: #252932;
-      color: white;
-    }
-
-    button {
-      background: white;
-      color: #111;
-      font-weight: bold;
-    }
-
-    button:active {
-      transform: scale(.98);
-    }
-
-    #msg {
-      text-align: center;
-      margin-top: 15px;
-      color: #aaa;
-    }
-
-    #home {
-      display: none;
-      text-align: center;
-    }
-
-    .logout {
-      margin-top: 25px;
-    }
-  </style>
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
 <body>
 
-<div class="box">
+    <!-- =========================
+         LOGIN
+    ========================== -->
 
-  <div id="login">
-    <h1>KODIAK</h1>
+    <div id="loginScreen" class="screen">
 
-    <input id="username" placeholder="Username">
-    <input id="password" type="password" placeholder="Password">
+        <div class="login-box">
 
-    <button onclick="signup()">Create Account</button>
-    <button onclick="loginUser()">Login</button>
+            <div class="logo">KODIAK</div>
 
-    <div id="msg"></div>
-  </div>
+            <p class="subtitle">Your personal command centre.</p>
 
-  <div id="home">
-    <h1>KODIAK</h1>
-    <h2>Welcome, <span id="user"></span></h2>
+            <input
+                id="username"
+                type="text"
+                placeholder="Username"
+                autocomplete="username"
+            >
 
-    <p>Your workspace is ready.</p>
+            <input
+                id="password"
+                type="password"
+                placeholder="Password"
+                autocomplete="current-password"
+            >
 
-    <button class="logout" onclick="logout()">Logout</button>
-  </div>
+            <button id="loginBtn" onclick="login()">
+                Enter KODIAK
+            </button>
 
-</div>
+            <button
+                id="signupBtn"
+                class="secondary-btn"
+                onclick="signup()"
+            >
+                Create account
+            </button>
 
-<script>
-const SUPABASE_URL = "https://tqvtzdeppaorpcsstgbp.supabase.co";
-const SUPABASE_KEY = "sb_publishable_rPrji_P-ZmEwKuTh9jQWGQ_vaVWoPKq";
+            <p id="authMessage"></p>
 
-const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        </div>
 
-function fakeEmail(username) {
-  return username.toLowerCase().trim() + "@kodiak.app";
-}
+    </div>
 
-async function signup() {
-  const username = document.getElementById("username").value.trim();
-  const password = document.getElementById("password").value;
 
-  if (!username || !password) {
-    msg("Enter username and password");
-    return;
-  }
+    <!-- =========================
+         APP
+    ========================== -->
 
-  const { data, error } = await db.auth.signUp({
-    email: fakeEmail(username),
-    password: password
-  });
+    <div id="appScreen" class="screen hidden">
 
-  if (error) {
-    msg(error.message);
-    return;
-  }
+        <!-- TOP BAR -->
 
-  await db.from("profiles").insert({
-    id: data.user.id,
-    username: username
-  });
+        <header class="topbar">
 
-  msg("Account created. You can login now.");
-}
+            <div class="brand">
+                KODIAK
+            </div>
 
-async function loginUser() {
-  const username = document.getElementById("username").value.trim();
-  const password = document.getElementById("password").value;
+            <div class="top-actions">
 
-  const { data, error } = await db.auth.signInWithPassword({
-    email: fakeEmail(username),
-    password: password
-  });
+                <span id="welcomeUser"></span>
 
-  if (error) {
-    msg(error.message);
-    return;
-  }
+                <button onclick="logout()" class="logout-btn">
+                    Logout
+                </button>
 
-  showHome(username);
-}
+            </div>
 
-async function logout() {
-  await db.auth.signOut();
+        </header>
 
-  document.getElementById("home").style.display = "none";
-  document.getElementById("login").style.display = "block";
-}
 
-function showHome(username) {
-  document.getElementById("login").style.display = "none";
-  document.getElementById("home").style.display = "block";
-  document.getElementById("user").textContent = username;
-}
+        <!-- MAIN -->
 
-function msg(text) {
-  document.getElementById("msg").textContent = text;
-}
+        <main class="container">
 
-async function checkSession() {
-  const { data } = await db.auth.getSession();
+            <!-- HOME -->
 
-  if (data.session) {
-    const { data: profile } = await db
-      .from("profiles")
-      .select("username")
-      .eq("id", data.session.user.id)
-      .single();
+            <section id="homeView">
 
-    if (profile) showHome(profile.username);
-  }
-}
+                <div class="hero">
 
-checkSession();
-</script>
+                    <div>
+                        <h1>Good to see you.</h1>
+                        <p>
+                            Everything you need, in one place.
+                        </p>
+                    </div>
+
+                </div>
+
+
+                <!-- QUICK STATUS -->
+
+                <div class="status-grid">
+
+                    <div class="status-card">
+                        <span>Projects</span>
+                        <strong id="projectCount">0</strong>
+                    </div>
+
+                    <div class="status-card">
+                        <span>In Progress</span>
+                        <strong id="progressCount">0</strong>
+                    </div>
+
+                    <div class="status-card">
+                        <span>Issues</span>
+                        <strong id="issueCount">0</strong>
+                    </div>
+
+                    <div class="status-card">
+                        <span>Reminders</span>
+                        <strong id="reminderCount">0</strong>
+                    </div>
+
+                </div>
+
+
+                <!-- TOOLS -->
+
+                <div class="section-header">
+
+                    <div>
+                        <h2>Tools</h2>
+                        <p>Your KODIAK toolbox.</p>
+                    </div>
+
+                    <input
+                        id="toolSearch"
+                        type="search"
+                        placeholder="Search tools..."
+                        oninput="filterTools()"
+                    >
+
+                </div>
+
+
+                <div id="toolsGrid" class="tools-grid">
+
+                    <!-- Tools inserted by JavaScript -->
+
+                </div>
+
+
+                <!-- PROJECTS -->
+
+                <div class="section-header project-header">
+
+                    <div>
+                        <h2>Projects</h2>
+                        <p>Track everything you're working on.</p>
+                    </div>
+
+                    <button onclick="showNewProject()">
+                        + New Project
+                    </button>
+
+                </div>
+
+
+                <div id="projectsGrid" class="projects-grid">
+
+                    <!-- Projects inserted by JavaScript -->
+
+                </div>
+
+            </section>
+
+
+            <!-- PROJECT DETAIL -->
+
+            <section id="projectView" class="hidden">
+
+                <button
+                    class="back-btn"
+                    onclick="showHome()"
+                >
+                    ← Back
+                </button>
+
+                <div id="projectDetails">
+
+                    <!-- Filled by JavaScript -->
+
+                </div>
+
+            </section>
+
+        </main>
+
+    </div>
+
+
+    <!-- =========================
+         NEW PROJECT MODAL
+    ========================== -->
+
+    <div id="projectModal" class="modal hidden">
+
+        <div class="modal-box">
+
+            <button
+                class="close-btn"
+                onclick="closeProjectModal()"
+            >
+                ×
+            </button>
+
+            <h2>New Project</h2>
+
+            <input
+                id="newProjectName"
+                type="text"
+                placeholder="Project name"
+            >
+
+            <textarea
+                id="newProjectDescription"
+                placeholder="Description (optional)"
+            ></textarea>
+
+            <label>Project colour</label>
+
+            <input
+                id="newProjectColour"
+                type="color"
+                value="#6366f1"
+            >
+
+            <button onclick="createProject()">
+                Create Project
+            </button>
+
+            <p id="projectMessage"></p>
+
+        </div>
+
+    </div>
+
+
+    <!-- =========================
+         JAVASCRIPT
+    ========================== -->
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
 
 </body>
 </html>
