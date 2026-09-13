@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KODIAK</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0f1115;
+      color: white;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .box {
+      width: 90%;
+      max-width: 400px;
+      background: #181b22;
+      padding: 30px;
+      border-radius: 18px;
+    }
+
+    h1 {
+      text-align: center;
+      letter-spacing: 4px;
+      margin-bottom: 30px;
+    }
+
+    input, button {
+      width: 100%;
+      padding: 14px;
+      margin-top: 12px;
+      border-radius: 10px;
+      border: none;
+      font-size: 16px;
+    }
+
+    input {
+      background: #252932;
+      color: white;
+    }
+
+    button {
+      background: white;
+      color: #111;
+      font-weight: bold;
+    }
+
+    button:active {
+      transform: scale(.98);
+    }
+
+    #msg {
+      text-align: center;
+      margin-top: 15px;
+      color: #aaa;
+    }
+
+    #home {
+      display: none;
+      text-align: center;
+    }
+
+    .logout {
+      margin-top: 25px;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="box">
+
+  <div id="login">
+    <h1>KODIAK</h1>
+
+    <input id="username" placeholder="Username">
+    <input id="password" type="password" placeholder="Password">
+
+    <button onclick="signup()">Create Account</button>
+    <button onclick="loginUser()">Login</button>
+
+    <div id="msg"></div>
+  </div>
+
+  <div id="home">
+    <h1>KODIAK</h1>
+    <h2>Welcome, <span id="user"></span></h2>
+
+    <p>Your workspace is ready.</p>
+
+    <button class="logout" onclick="logout()">Logout</button>
+  </div>
+
+</div>
+
+<script>
+const SUPABASE_URL = "https://tqvtzdeppaorpcsstgbp.supabase.co";
+const SUPABASE_KEY = "sb_publishable_rPrji_P-ZmEwKuTh9jQWGQ_vaVWoPKq";
+
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+function fakeEmail(username) {
+  return username.toLowerCase().trim() + "@kodiak.app";
+}
+
+async function signup() {
+  const username = document.getElementById("username").value.trim();
+  const password = document.getElementById("password").value;
+
+  if (!username || !password) {
+    msg("Enter username and password");
+    return;
+  }
+
+  const { data, error } = await db.auth.signUp({
+    email: fakeEmail(username),
+    password: password
+  });
+
+  if (error) {
+    msg(error.message);
+    return;
+  }
+
+  await db.from("profiles").insert({
+    id: data.user.id,
+    username: username
+  });
+
+  msg("Account created. You can login now.");
+}
+
+async function loginUser() {
+  const username = document.getElementById("username").value.trim();
+  const password = document.getElementById("password").value;
+
+  const { data, error } = await db.auth.signInWithPassword({
+    email: fakeEmail(username),
+    password: password
+  });
+
+  if (error) {
+    msg(error.message);
+    return;
+  }
+
+  showHome(username);
+}
+
+async function logout() {
+  await db.auth.signOut();
+
+  document.getElementById("home").style.display = "none";
+  document.getElementById("login").style.display = "block";
+}
+
+function showHome(username) {
+  document.getElementById("login").style.display = "none";
+  document.getElementById("home").style.display = "block";
+  document.getElementById("user").textContent = username;
+}
+
+function msg(text) {
+  document.getElementById("msg").textContent = text;
+}
+
+async function checkSession() {
+  const { data } = await db.auth.getSession();
+
+  if (data.session) {
+    const { data: profile } = await db
+      .from("profiles")
+      .select("username")
+      .eq("id", data.session.user.id)
+      .single();
+
+    if (profile) showHome(profile.username);
+  }
+}
+
+checkSession();
+</script>
+
+</body>
+</html>
