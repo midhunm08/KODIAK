@@ -1,1094 +1,1328 @@
-// ============================================
-// KODIAK APP
-// ============================================
-
-let currentUser = null;
-let projects = [];
-let currentProject = null;
+/* =========================================================
+   EXPENSE TRACKER
+   Excel-based personal accounting / bank reconciliation
+========================================================= */
 
 
-// ============================================
-// STARTUP
-// ============================================
+/* =========================================================
+   DATA
+========================================================= */
 
-document.addEventListener("DOMContentLoaded", async () => {
-    const { data } = await supabaseClient.auth.getSession();
+let db = {
+    ledgers: [],
+    transactions: [],
+    daily: []
+};
 
-    if (data.session) {
-        currentUser = data.session.user;
-        await loadApp();
-    } else {
-        showLogin();
-    }
+let currentDate = today();
 
-    supabaseClient.auth.onAuthStateChange(async (event, session) => {
-        if (session) {
-            currentUser = session.user;
-            await loadApp();
-        } else {
-            currentUser = null;
-            showLogin();
-        }
-    });
+
+/* =========================================================
+   STARTUP
+========================================================= */
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    document.getElementById("selectedDate").value = currentDate;
+
+    document.getElementById("txDate").value = currentDate;
+
+    document
+        .getElementById("fileInput")
+        .addEventListener("change", importExcel);
+
+    loadLocal();
+
+    renderAll();
+
 });
 
 
-// ============================================
-// AUTH
-// ============================================
+/* =========================================================
+   BASIC HELPERS
+========================================================= */
 
-// We keep the UI as username + password.
-// Supabase Auth uses an internal email-shaped identifier
-// behind the scenes. The user never needs an email.
+function today() {
 
-function makeInternalEmail(username) {
-    return username.trim().toLowerCase() + "@kodiak.local";
+    const d = new Date();
+
+    return d.getFullYear() +
+        "-" +
+        String(d.getMonth() + 1).padStart(2, "0") +
+        "-" +
+        String(d.getDate()).padStart(2, "0");
 }
 
 
-async function signup() {
+function money(value) {
 
-    const username =
-        document.getElementById("username").value.trim();
+    return new Intl.NumberFormat("en-IN", {
+        style: "currency",
+        currency: "INR",
+        minimumFractionDigits: 2
+    }).format(Number(value) || 0);
 
-    const password =
-        document.getElementById("password").value;
+}
 
-    const message =
-        document.getElementById("authMessage");
 
-    if (!username || !password) {
-        message.textContent = "Enter a username and password.";
-        return;
+function id() {
+
+    return crypto.randomUUID
+        ? crypto.randomUUID()
+        : Date.now().toString(36) +
+          Math.random().toString(36).slice(2);
+
+}
+
+
+function saveLocal() {
+
+    localStorage.setItem(
+        "expenseTrackerDB",
+        JSON.stringify(db)
+    );
+
+}
+
+
+function loadLocal() {
+
+    const saved = localStorage.getItem(
+        "expenseTrackerDB"
+    );
+
+    if (!saved) return;
+
+    try {
+
+        db = JSON.parse(saved);
+
+    } catch {
+
+        console.log("Could not load saved data.");
+
     }
 
-    if (username.length < 3) {
-        message.textContent = "Username must be at least 3 characters.";
-        return;
-    }
+}
 
-    if (password.length < 6) {
-        message.textContent = "Password must be at least 6 characters.";
-        return;
-    }
 
-    message.textContent = "Creating account...";
+/* =========================================================
+   NAVIGATION
+========================================================= */
 
-    const email = makeInternalEmail(username);
+function showPage(pageId, button) {
 
-    const { data, error } =
-        await supabaseClient.auth.signUp({
-            email: email,
-            password: password,
-            options: {
-                data: {
-                    username: username
-                }
-            }
+    document
+        .querySelectorAll(".page")
+        .forEach(page =>
+            page.classList.remove("active-page")
+        );
+
+    document
+        .getElementById(pageId)
+        .classList.add("active-page");
+
+    document
+        .querySelectorAll(".tab")
+        .forEach(tab =>
+            tab.classList.remove("active")
+        );
+
+    button.classList.add("active");
+
+    renderAll();
+
+}
+
+
+/* =========================================================
+   FILE IMPORT
+========================================================= */
+
+function openFile() {
+
+    document
+        .getElementById("fileInput")
+        .click();
+
+}
+
+
+async function importExcel(event) {
+
+    const file = event.target.files[0];
+
+    if (!file) return;
+
+    try {
+
+        const buffer = await file.arrayBuffer();
+
+        const workbook = XLSX.read(buffer, {
+            type: "array"
         });
 
-    if (error) {
-        message.textContent = error.message;
-        return;
-    }
-
-    if (!data.user) {
-        message.textContent = "Account creation failed.";
-        return;
-    }
-
-    // Create profile
-    const { error: profileError } =
-        await supabaseClient
-            .from("profiles")
-            .insert({
-                id: data.user.id,
-                username: username,
-                display_name: username
-            });
-
-    if (profileError) {
-        console.error(profileError);
-    }
-
-    message.textContent = "Account created. Logging in...";
-}
+        const imported = {
+            ledgers: [],
+            transactions: [],
+            daily: []
+        };
 
 
-async function login() {
+        /* -------------------------
+           LEDGERS
+        ------------------------- */
 
-    const username =
-        document.getElementById("username").value.trim();
+        if (workbook.SheetNames.includes("Ledgers")) {
 
-    const password =
-        document.getElementById("password").value;
+            const sheet =
+                workbook.Sheets["Ledgers"];
 
-    const message =
-        document.getElementById("authMessage");
+            const rows =
+                XLSX.utils.sheet_to_json(sheet);
 
-    if (!username || !password) {
-        message.textContent = "Enter your username and password.";
-        return;
-    }
+            imported.ledgers = rows.map(row => ({
+                id: row.ID || id(),
+                name: row.Ledger || "",
+                type: row.Type || "Expense",
+                opening: Number(row["Opening Balance"] || 0)
+            }));
 
-    message.textContent = "Logging in...";
-
-    const email = makeInternalEmail(username);
-
-    const { data, error } =
-        await supabaseClient.auth.signInWithPassword({
-            email: email,
-            password: password
-        });
-
-    if (error) {
-        message.textContent = "Invalid username or password.";
-        console.error(error);
-        return;
-    }
-
-    currentUser = data.user;
-
-    await loadApp();
-}
-
-
-async function logout() {
-
-    await supabaseClient.auth.signOut();
-
-    currentUser = null;
-
-    showLogin();
-}
-
-
-function showLogin() {
-
-    document
-        .getElementById("loginScreen")
-        .classList.remove("hidden");
-
-    document
-        .getElementById("appScreen")
-        .classList.add("hidden");
-}
-
-
-async function loadApp() {
-
-    document
-        .getElementById("loginScreen")
-        .classList.add("hidden");
-
-    document
-        .getElementById("appScreen")
-        .classList.remove("hidden");
-
-    const profile =
-        await getProfile();
-
-    document.getElementById("welcomeUser").textContent =
-        profile?.display_name ||
-        profile?.username ||
-        "User";
-
-    await loadTools();
-    await loadProjects();
-}
-
-
-// ============================================
-// PROFILE
-// ============================================
-
-async function getProfile() {
-
-    if (!currentUser) return null;
-
-    const { data, error } =
-        await supabaseClient
-            .from("profiles")
-            .select("*")
-            .eq("id", currentUser.id)
-            .maybeSingle();
-
-    if (error) {
-        console.error(error);
-        return null;
-    }
-
-    return data;
-}
-
-
-// ============================================
-// TOOLS
-// ============================================
-
-let allTools = [];
-
-
-async function loadTools() {
-
-    const { data, error } =
-        await supabaseClient
-            .from("tools")
-            .select("*")
-            .order("name");
-
-    if (error) {
-        console.error(error);
-        return;
-    }
-
-    allTools = data || [];
-
-    renderTools(allTools);
-}
-
-
-function renderTools(tools) {
-
-    const grid =
-        document.getElementById("toolsGrid");
-
-    grid.innerHTML = "";
-
-    if (!tools.length) {
-        grid.innerHTML =
-            "<p>No tools available.</p>";
-        return;
-    }
-
-    tools.forEach(tool => {
-
-        const card =
-            document.createElement("div");
-
-        card.className = "tool-card";
-
-        card.innerHTML = `
-            <div class="tool-icon">
-                ${escapeHTML(tool.icon || "🧰")}
-            </div>
-
-            <h3>${escapeHTML(tool.name)}</h3>
-
-            <p>
-                ${escapeHTML(tool.description || "")}
-            </p>
-        `;
-
-        if (tool.route === "project-tracker") {
-            card.onclick = () => {
-                document
-                    .getElementById("projectsGrid")
-                    .scrollIntoView({
-                        behavior: "smooth"
-                    });
-            };
         }
 
-        grid.appendChild(card);
-    });
-}
+
+        /* -------------------------
+           TRANSACTIONS
+        ------------------------- */
+
+        if (workbook.SheetNames.includes("Transactions")) {
+
+            const sheet =
+                workbook.Sheets["Transactions"];
+
+            const rows =
+                XLSX.utils.sheet_to_json(sheet);
+
+            imported.transactions =
+                rows.map(row => ({
+                    id: row.ID || id(),
+                    date: normalizeDate(row.Date),
+                    ledger: row.Ledger || "",
+                    description: row.Description || "",
+                    debit: Number(row.Debit || 0),
+                    credit: Number(row.Credit || 0)
+                }));
+
+        }
 
 
-function filterTools() {
+        /* -------------------------
+           DAILY
+        ------------------------- */
 
-    const search =
-        document
-            .getElementById("toolSearch")
-            .value
-            .toLowerCase()
-            .trim();
+        if (workbook.SheetNames.includes("Daily")) {
 
-    const filtered =
-        allTools.filter(tool =>
-            tool.name.toLowerCase().includes(search) ||
-            (tool.description || "")
-                .toLowerCase()
-                .includes(search)
-        );
+            const sheet =
+                workbook.Sheets["Daily"];
 
-    renderTools(filtered);
-}
+            const rows =
+                XLSX.utils.sheet_to_json(sheet);
+
+            imported.daily =
+                rows.map(row => ({
+                    date: normalizeDate(row.Date),
+                    actualClosing:
+                        Number(row["Actual Closing"] || 0)
+                }));
+
+        }
 
 
-// ============================================
-// PROJECTS
-// ============================================
+        db = imported;
 
-async function loadProjects() {
+        saveLocal();
 
-    if (!currentUser) return;
+        document.getElementById("fileStatus")
+            .textContent = file.name;
 
-    const { data, error } =
-        await supabaseClient
-            .from("projects")
-            .select("*")
-            .eq("user_id", currentUser.id)
-            .eq("archived", false)
-            .order("created_at", {
-                ascending: false
-            });
+        renderAll();
 
-    if (error) {
+        alert("Excel loaded successfully.");
+
+    } catch (error) {
+
         console.error(error);
-        return;
-    }
 
-    projects = data || [];
-
-    await renderProjects();
-
-    document.getElementById("projectCount").textContent =
-        projects.length;
-}
-
-
-async function renderProjects() {
-
-    const grid =
-        document.getElementById("projectsGrid");
-
-    grid.innerHTML = "";
-
-    if (!projects.length) {
-
-        grid.innerHTML = `
-            <div class="empty-state">
-                <p>No projects yet.</p>
-                <p>Create your first project above.</p>
-            </div>
-        `;
-
-        return;
-    }
-
-    for (const project of projects) {
-
-        const tasks =
-            await getProjectTasks(project.id);
-
-        const progress =
-            calculateProjectProgress(tasks);
-
-        const card =
-            document.createElement("div");
-
-        card.className = "project-card";
-
-        card.style.setProperty(
-            "--project-colour",
-            project.colour || "#6366f1"
+        alert(
+            "Could not read this Excel file."
         );
 
-        card.innerHTML = `
-            <h3>${escapeHTML(project.name)}</h3>
-
-            <p>
-                ${escapeHTML(project.description || "")}
-            </p>
-
-            <div class="project-progress">
-
-                <div class="progress-track">
-                    <div
-                        class="progress-fill"
-                        style="
-                            width:${progress}%;
-                            --project-colour:${project.colour || "#6366f1"};
-                        "
-                    ></div>
-                </div>
-
-                <div class="progress-info">
-                    <span>Progress</span>
-                    <span>${progress}%</span>
-                </div>
-
-            </div>
-        `;
-
-        card.onclick = () =>
-            openProject(project);
-
-        grid.appendChild(card);
     }
 
-    await updateDashboardCounts();
 }
 
 
-// ============================================
-// PROJECT CREATION
-// ============================================
+function normalizeDate(value) {
 
-function showNewProject() {
+    if (!value) return today();
 
-    document
-        .getElementById("projectModal")
-        .classList.remove("hidden");
+    if (typeof value === "string") {
 
-    document
-        .getElementById("newProjectName")
-        .focus();
+        if (value.includes("T")) {
+            return value.split("T")[0];
+        }
+
+        return value;
+    }
+
+    if (value instanceof Date) {
+
+        return value.toISOString().split("T")[0];
+
+    }
+
+    return today();
+
 }
 
 
-function closeProjectModal() {
+/* =========================================================
+   EXPORT EXCEL
+========================================================= */
 
-    document
-        .getElementById("projectModal")
-        .classList.add("hidden");
+function exportExcel() {
 
-    document.getElementById("newProjectName").value = "";
-    document.getElementById("newProjectDescription").value = "";
-    document.getElementById("projectMessage").textContent = "";
+    const workbook = XLSX.utils.book_new();
+
+
+    /* -------------------------
+       LEDGERS
+    ------------------------- */
+
+    const ledgerRows = db.ledgers.map(l => ({
+        ID: l.id,
+        Ledger: l.name,
+        Type: l.type,
+        "Opening Balance": l.opening
+    }));
+
+
+    const ledgerSheet =
+        XLSX.utils.json_to_sheet(ledgerRows);
+
+    XLSX.utils.book_append_sheet(
+        workbook,
+        ledgerSheet,
+        "Ledgers"
+    );
+
+
+    /* -------------------------
+       TRANSACTIONS
+    ------------------------- */
+
+    const transactionRows =
+        db.transactions.map(t => ({
+            ID: t.id,
+            Date: t.date,
+            Ledger: t.ledger,
+            Description: t.description,
+            Debit: t.debit,
+            Credit: t.credit
+        }));
+
+
+    const transactionSheet =
+        XLSX.utils.json_to_sheet(transactionRows);
+
+    XLSX.utils.book_append_sheet(
+        workbook,
+        transactionSheet,
+        "Transactions"
+    );
+
+
+    /* -------------------------
+       DAILY
+    ------------------------- */
+
+    const dates = getAllDates();
+
+    const dailyRows = dates.map(date => {
+
+        const calc = calculateDay(date);
+
+        return {
+            Date: date,
+            "Opening Balance": calc.opening,
+            Receipts: calc.receipts,
+            Payments: calc.payments,
+            "Expected Closing": calc.expected,
+            "Actual Closing":
+                calc.actual === null
+                    ? ""
+                    : calc.actual,
+            Difference:
+                calc.actual === null
+                    ? ""
+                    : calc.difference,
+            Status:
+                calc.actual === null
+                    ? "Pending"
+                    : Math.abs(calc.difference) < 0.01
+                        ? "Reconciled"
+                        : "Difference"
+        };
+
+    });
+
+
+    const dailySheet =
+        XLSX.utils.json_to_sheet(dailyRows);
+
+    XLSX.utils.book_append_sheet(
+        workbook,
+        dailySheet,
+        "Daily"
+    );
+
+
+    /* -------------------------
+       DOWNLOAD
+    ------------------------- */
+
+    XLSX.writeFile(
+        workbook,
+        "Expense_Tracker.xlsx",
+        {
+            compression: true
+        }
+    );
+
 }
 
 
-async function createProject() {
+/* =========================================================
+   LEDGERS
+========================================================= */
+
+function openLedgerModal() {
+
+    document
+        .getElementById("ledgerModal")
+        .classList.add("show");
+
+}
+
+
+function saveLedger() {
 
     const name =
         document
-            .getElementById("newProjectName")
+            .getElementById("ledgerName")
             .value
             .trim();
+
+    const type =
+        document
+            .getElementById("ledgerType")
+            .value;
+
+    const opening =
+        Number(
+            document
+                .getElementById("ledgerOpening")
+                .value
+        ) || 0;
+
+
+    if (!name) {
+
+        alert("Enter a ledger name.");
+
+        return;
+
+    }
+
+
+    const exists =
+        db.ledgers.some(
+            l =>
+                l.name.toLowerCase() ===
+                name.toLowerCase()
+        );
+
+
+    if (exists) {
+
+        alert("This ledger already exists.");
+
+        return;
+
+    }
+
+
+    db.ledgers.push({
+        id: id(),
+        name,
+        type,
+        opening
+    });
+
+
+    saveLocal();
+
+    closeModal("ledgerModal");
+
+    document
+        .getElementById("ledgerName")
+        .value = "";
+
+    renderAll();
+
+}
+
+
+function renderLedgers() {
+
+    const grid =
+        document.getElementById("ledgerGrid");
+
+    if (!db.ledgers.length) {
+
+        grid.innerHTML =
+            `<div class="empty">
+                No ledgers yet.
+             </div>`;
+
+        return;
+    }
+
+
+    grid.innerHTML =
+        db.ledgers.map(l => {
+
+            return `
+                <div class="ledger">
+
+                    <div class="ledger-name">
+                        ${escapeHtml(l.name)}
+                    </div>
+
+                    <div class="ledger-type">
+                        ${escapeHtml(l.type)}
+                    </div>
+
+                    <div class="ledger-opening">
+                        ${money(l.opening)}
+                    </div>
+
+                </div>
+            `;
+
+        }).join("");
+
+}
+
+
+/* =========================================================
+   TRANSACTIONS
+========================================================= */
+
+function openTransactionModal() {
+
+    populateLedgerSelect();
+
+    document
+        .getElementById("txDate")
+        .value = currentDate;
+
+    document
+        .getElementById("txDescription")
+        .value = "";
+
+    document
+        .getElementById("txDebit")
+        .value = "";
+
+    document
+        .getElementById("txCredit")
+        .value = "";
+
+    document
+        .getElementById("transactionModal")
+        .classList.add("show");
+
+}
+
+
+function populateLedgerSelect() {
+
+    const select =
+        document.getElementById("txLedger");
+
+    select.innerHTML =
+        db.ledgers.map(l => {
+
+            return `
+                <option value="${escapeAttr(l.name)}">
+                    ${escapeHtml(l.name)}
+                </option>
+            `;
+
+        }).join("");
+
+}
+
+
+function saveTransaction() {
+
+    const date =
+        document.getElementById("txDate").value;
+
+    const ledger =
+        document.getElementById("txLedger").value;
 
     const description =
         document
-            .getElementById("newProjectDescription")
+            .getElementById("txDescription")
             .value
             .trim();
 
-    const colour =
-        document
-            .getElementById("newProjectColour")
-            .value;
+    const debit =
+        Number(
+            document.getElementById("txDebit").value
+        ) || 0;
 
-    const message =
-        document.getElementById("projectMessage");
+    const credit =
+        Number(
+            document.getElementById("txCredit").value
+        ) || 0;
 
-    if (!name) {
-        message.textContent =
-            "Give the project a name.";
-        return;
-    }
 
-    message.textContent =
-        "Creating project...";
+    if (!date || !ledger) {
 
-    const { data, error } =
-        await supabaseClient
-            .from("projects")
-            .insert({
-                user_id: currentUser.id,
-                name: name,
-                description: description,
-                colour: colour
-            })
-            .select()
-            .single();
-
-    if (error) {
-
-        console.error(error);
-
-        message.textContent =
-            error.message;
+        alert("Date and ledger are required.");
 
         return;
+
     }
 
-    projects.unshift(data);
 
-    closeProjectModal();
+    if (debit > 0 && credit > 0) {
 
-    await renderProjects();
-}
-
-
-// ============================================
-// PROJECT DETAIL
-// ============================================
-
-async function openProject(project) {
-
-    currentProject = project;
-
-    document
-        .getElementById("homeView")
-        .classList.add("hidden");
-
-    document
-        .getElementById("projectView")
-        .classList.remove("hidden");
-
-    await renderProjectDetail();
-}
-
-
-async function renderProjectDetail() {
-
-    if (!currentProject) return;
-
-    const container =
-        document.getElementById("projectDetails");
-
-    const tasks =
-        await getProjectTasks(currentProject.id);
-
-    const progress =
-        calculateProjectProgress(tasks);
-
-    container.innerHTML = `
-
-        <div
-            class="project-detail-header"
-            style="
-                --project-colour:
-                ${currentProject.colour || "#6366f1"};
-            "
-        >
-
-            <h1>
-                ${escapeHTML(currentProject.name)}
-            </h1>
-
-            <p>
-                ${escapeHTML(
-                    currentProject.description || ""
-                )}
-            </p>
-
-            <div class="project-progress">
-
-                <div class="progress-track">
-                    <div
-                        class="progress-fill"
-                        style="width:${progress}%"
-                    ></div>
-                </div>
-
-                <div class="progress-info">
-                    <span>Overall progress</span>
-                    <span>${progress}%</span>
-                </div>
-
-            </div>
-
-        </div>
-
-        <div class="tasks-container">
-
-            <div class="section-header">
-
-                <div>
-                    <h2>Tasks</h2>
-                    <p>
-                        Build your project hierarchy.
-                    </p>
-                </div>
-
-                <button
-                    onclick="addTaskPrompt()"
-                    style="
-                        width:auto;
-                        padding:10px 15px;
-                    "
-                >
-                    + Task
-                </button>
-
-            </div>
-
-            <div id="taskList"></div>
-
-        </div>
-    `;
-
-    renderTaskTree(tasks);
-}
-
-
-async function getProjectTasks(projectId) {
-
-    const { data, error } =
-        await supabaseClient
-            .from("tasks")
-            .select("*")
-            .eq("project_id", projectId)
-            .eq("user_id", currentUser.id)
-            .order("sort_order", {
-                ascending: true
-            })
-            .order("created_at", {
-                ascending: true
-            });
-
-    if (error) {
-        console.error(error);
-        return [];
-    }
-
-    return data || [];
-}
-
-
-// ============================================
-// TASKS
-// ============================================
-
-async function addTaskPrompt(parentId = null) {
-
-    if (!currentProject) return;
-
-    const name =
-        prompt(
-            parentId
-                ? "Subtask name:"
-                : "Task name:"
+        alert(
+            "Enter either Debit or Credit, not both."
         );
 
-    if (!name || !name.trim()) return;
-
-    const { error } =
-        await supabaseClient
-            .from("tasks")
-            .insert({
-                user_id: currentUser.id,
-                project_id: currentProject.id,
-                parent_task_id: parentId,
-                name: name.trim(),
-                status: "Yet to begin",
-                progress: 0
-            });
-
-    if (error) {
-        alert(error.message);
         return;
+
     }
 
-    await renderProjectDetail();
+
+    if (debit === 0 && credit === 0) {
+
+        alert("Enter an amount.");
+
+        return;
+
+    }
+
+
+    db.transactions.push({
+
+        id: id(),
+        date,
+        ledger,
+        description,
+        debit,
+        credit
+
+    });
+
+
+    saveLocal();
+
+    closeModal("transactionModal");
+
+    currentDate = date;
+
+    document
+        .getElementById("selectedDate")
+        .value = date;
+
+    renderAll();
+
 }
 
 
-function renderTaskTree(tasks) {
+function renderTransactions() {
 
-    const list =
-        document.getElementById("taskList");
-
-    if (!list) return;
-
-    list.innerHTML = "";
-
-    const roots =
-        tasks.filter(task =>
-            !task.parent_task_id
+    const tbody =
+        document.getElementById(
+            "transactionsTable"
         );
 
-    if (!roots.length) {
 
-        list.innerHTML = `
-            <div class="task-row">
-                <div class="task-name">
-                    No tasks yet.
-                </div>
-            </div>
+    const transactions =
+        [...db.transactions]
+            .sort((a, b) =>
+                b.date.localeCompare(a.date)
+            );
+
+
+    if (!transactions.length) {
+
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6"
+                    class="empty">
+                    No transactions.
+                </td>
+            </tr>
         `;
 
         return;
+
     }
 
-    roots.forEach(task => {
 
-        renderTaskNode(
-            task,
-            tasks,
-            list,
+    tbody.innerHTML =
+        transactions.map(t => {
+
+            return `
+                <tr>
+
+                    <td>${escapeHtml(t.date)}</td>
+
+                    <td>${escapeHtml(t.ledger)}</td>
+
+                    <td>${escapeHtml(t.description)}</td>
+
+                    <td>
+                        ${t.debit
+                            ? money(t.debit)
+                            : ""}
+                    </td>
+
+                    <td>
+                        ${t.credit
+                            ? money(t.credit)
+                            : ""}
+                    </td>
+
+                    <td>
+                        <button
+                            onclick="deleteTransaction('${t.id}')">
+                            Delete
+                        </button>
+                    </td>
+
+                </tr>
+            `;
+
+        }).join("");
+
+}
+
+
+function deleteTransaction(transactionId) {
+
+    if (!confirm("Delete this transaction?")) {
+        return;
+    }
+
+
+    db.transactions =
+        db.transactions.filter(
+            t => t.id !== transactionId
+        );
+
+
+    saveLocal();
+
+    renderAll();
+
+}
+
+
+/* =========================================================
+   DAILY CALCULATION
+========================================================= */
+
+function getOpeningBalance(date) {
+
+    const sorted =
+        [...getAllDates()]
+            .sort();
+
+
+    const previousDates =
+        sorted.filter(d => d < date);
+
+
+    if (!previousDates.length) {
+
+        const bank =
+            db.ledgers.find(
+                l =>
+                    l.type === "Asset" &&
+                    /bank/i.test(l.name)
+            );
+
+        return bank
+            ? Number(bank.opening || 0)
+            : 0;
+
+    }
+
+
+    const previousDate =
+        previousDates[previousDates.length - 1];
+
+    const previous =
+        calculateDay(previousDate);
+
+
+    if (previous.actual !== null) {
+
+        return previous.actual;
+
+    }
+
+
+    return previous.expected;
+
+}
+
+
+function calculateDay(date) {
+
+    const transactions =
+        db.transactions.filter(
+            t => t.date === date
+        );
+
+
+    const receipts =
+        transactions.reduce(
+            (sum, t) =>
+                sum + Number(t.credit || 0),
             0
         );
 
-    });
+
+    const payments =
+        transactions.reduce(
+            (sum, t) =>
+                sum + Number(t.debit || 0),
+            0
+        );
+
+
+    const opening =
+        getOpeningBalanceWithoutRecursion(date);
+
+
+    const expected =
+        opening +
+        receipts -
+        payments;
+
+
+    const daily =
+        db.daily.find(
+            d => d.date === date
+        );
+
+
+    const actual =
+        daily &&
+        daily.actualClosing !== undefined
+            ? Number(daily.actualClosing)
+            : null;
+
+
+    const difference =
+        actual === null
+            ? null
+            : actual - expected;
+
+
+    return {
+        opening,
+        receipts,
+        payments,
+        expected,
+        actual,
+        difference
+    };
+
 }
 
 
-function renderTaskNode(
-    task,
-    allTasks,
-    container,
-    depth
-) {
+/*
+    This calculates opening balance by walking
+    backwards to the last known actual closing.
+*/
 
-    const children =
-        allTasks.filter(child =>
-            child.parent_task_id === task.id
-        );
+function getOpeningBalanceWithoutRecursion(date) {
 
-    const calculatedProgress =
-        children.length
-            ? calculateNodeProgress(
-                task.id,
-                allTasks
-            )
-            : Number(task.progress || 0);
-
-    const row =
-        document.createElement("div");
-
-    row.className = "task-row";
-
-    row.style.marginLeft =
-        `${depth * 20}px`;
-
-    row.innerHTML = `
-
-        <div class="task-name">
-            ${escapeHTML(task.name)}
-        </div>
-
-        <div class="task-meta">
-
-            ${escapeHTML(task.status)}
-            ·
-            ${calculatedProgress}%
-
-            ${
-                task.remarks
-                    ? " · " + escapeHTML(task.remarks)
-                    : ""
-            }
-
-        </div>
-
-        <div style="
-            display:flex;
-            gap:8px;
-            margin-top:10px;
-            flex-wrap:wrap;
-        ">
-
-            <button
-                onclick="addTaskPrompt('${task.id}')"
-                style="
-                    border:1px solid #333;
-                    background:transparent;
-                    color:white;
-                    padding:6px 9px;
-                    border-radius:7px;
-                "
-            >
-                + Subtask
-            </button>
-
-            <button
-                onclick="editTask('${task.id}')"
-                style="
-                    border:1px solid #333;
-                    background:transparent;
-                    color:white;
-                    padding:6px 9px;
-                    border-radius:7px;
-                "
-            >
-                Edit
-            </button>
-
-            <button
-                onclick="deleteTask('${task.id}')"
-                style="
-                    border:1px solid #333;
-                    background:transparent;
-                    color:#ff6464;
-                    padding:6px 9px;
-                    border-radius:7px;
-                "
-            >
-                Delete
-            </button>
-
-        </div>
-    `;
-
-    container.appendChild(row);
-
-    children.forEach(child => {
-
-        renderTaskNode(
-            child,
-            allTasks,
-            container,
-            depth + 1
-        );
-
-    });
-}
+    const dates =
+        getAllDates()
+            .filter(d => d < date)
+            .sort()
+            .reverse();
 
 
-async function editTask(taskId) {
+    for (const previousDate of dates) {
 
-    const { data: task, error } =
-        await supabaseClient
-            .from("tasks")
-            .select("*")
-            .eq("id", taskId)
-            .eq("user_id", currentUser.id)
-            .single();
+        const daily =
+            db.daily.find(
+                d => d.date === previousDate
+            );
 
-    if (error) {
-        alert(error.message);
-        return;
+
+        if (
+            daily &&
+            daily.actualClosing !== undefined &&
+            daily.actualClosing !== ""
+        ) {
+
+            return Number(
+                daily.actualClosing
+            );
+
+        }
+
     }
 
-    const name =
-        prompt("Task name:", task.name);
 
-    if (name === null) return;
-
-    const status =
-        prompt(
-            "Status:\n\n" +
-            "Completed\n" +
-            "In progress\n" +
-            "Yet to begin\n" +
-            "Backlog\n" +
-            "Issues\n" +
-            "Blocked\n" +
-            "Review\n" +
-            "In final stage",
-            task.status
+    const bank =
+        db.ledgers.find(
+            l =>
+                l.type === "Asset" &&
+                /bank/i.test(l.name)
         );
 
-    if (status === null) return;
 
-    const progress =
-        prompt(
-            "Progress (0-100):",
-            task.progress
+    return bank
+        ? Number(bank.opening || 0)
+        : 0;
+
+}
+
+
+/* =========================================================
+   DAILY UI
+========================================================= */
+
+function loadDay() {
+
+    currentDate =
+        document.getElementById(
+            "selectedDate"
+        ).value;
+
+    renderDaily();
+
+}
+
+
+function renderDaily() {
+
+    const calc =
+        calculateDay(currentDate);
+
+
+    document.getElementById(
+        "openingBalance"
+    ).textContent = money(calc.opening);
+
+
+    document.getElementById(
+        "dayReceipts"
+    ).textContent = money(calc.receipts);
+
+
+    document.getElementById(
+        "dayPayments"
+    ).textContent = money(calc.payments);
+
+
+    document.getElementById(
+        "expectedClosing"
+    ).textContent = money(calc.expected);
+
+
+    const actualInput =
+        document.getElementById(
+            "actualClosing"
         );
 
-    if (progress === null) return;
 
-    const remarks =
-        prompt(
-            "Remarks:",
-            task.remarks || ""
+    actualInput.value =
+        calc.actual === null
+            ? ""
+            : calc.actual;
+
+
+    document.getElementById(
+        "dayDifference"
+    ).textContent =
+        calc.difference === null
+            ? "—"
+            : money(calc.difference);
+
+
+    renderDailyTransactions();
+
+}
+
+
+function renderDailyTransactions() {
+
+    const container =
+        document.getElementById(
+            "dailyTransactions"
         );
 
-    if (remarks === null) return;
 
-    let numericProgress =
-        Number(progress);
+    const transactions =
+        db.transactions.filter(
+            t => t.date === currentDate
+        );
+
+
+    if (!transactions.length) {
+
+        container.innerHTML =
+            `<div class="empty">
+                No transactions.
+             </div>`;
+
+        return;
+
+    }
+
+
+    container.innerHTML =
+        transactions.map(t => {
+
+            const amount =
+                t.debit > 0
+                    ? t.debit
+                    : t.credit;
+
+            const type =
+                t.debit > 0
+                    ? "debit"
+                    : "credit";
+
+            const sign =
+                t.debit > 0
+                    ? "-"
+                    : "+";
+
+
+            return `
+                <div class="transaction-item">
+
+                    <div class="tx-info">
+
+                        <strong>
+                            ${escapeHtml(
+                                t.description ||
+                                t.ledger
+                            )}
+                        </strong>
+
+                        <span>
+                            ${escapeHtml(t.ledger)}
+                        </span>
+
+                    </div>
+
+                    <div class="amount ${type}">
+                        ${sign}${money(amount)}
+                    </div>
+
+                </div>
+            `;
+
+        }).join("");
+
+}
+
+
+/* =========================================================
+   ACTUAL CLOSING
+========================================================= */
+
+function saveActualClosing() {
+
+    const value =
+        document.getElementById(
+            "actualClosing"
+        ).value;
+
+
+    if (value === "") {
+
+        db.daily =
+            db.daily.filter(
+                d => d.date !== currentDate
+            );
+
+        saveLocal();
+
+        renderAll();
+
+        return;
+
+    }
+
+
+    const amount = Number(value);
+
+
+    const existing =
+        db.daily.find(
+            d => d.date === currentDate
+        );
+
+
+    if (existing) {
+
+        existing.actualClosing = amount;
+
+    } else {
+
+        db.daily.push({
+
+            date: currentDate,
+            actualClosing: amount
+
+        });
+
+    }
+
+
+    saveLocal();
+
+    renderAll();
+
+}
+
+
+function reconcileDay() {
+
+    const calc =
+        calculateDay(currentDate);
+
+
+    if (calc.actual === null) {
+
+        alert(
+            "Enter the actual bank closing balance first."
+        );
+
+        return;
+
+    }
+
 
     if (
-        Number.isNaN(numericProgress) ||
-        numericProgress < 0 ||
-        numericProgress > 100
+        Math.abs(calc.difference) < 0.01
     ) {
-        alert("Progress must be between 0 and 100.");
-        return;
+
+        alert(
+            "✓ Day reconciled successfully."
+        );
+
+    } else {
+
+        alert(
+            "There is a difference of " +
+            money(calc.difference) +
+            "."
+        );
+
     }
 
-    if (status === "Completed") {
-        numericProgress = 100;
-    }
-
-    const { error: updateError } =
-        await supabaseClient
-            .from("tasks")
-            .update({
-                name: name.trim(),
-                status: status,
-                progress: numericProgress,
-                remarks: remarks,
-                updated_at: new Date().toISOString()
-            })
-            .eq("id", taskId)
-            .eq("user_id", currentUser.id);
-
-    if (updateError) {
-        alert(updateError.message);
-        return;
-    }
-
-    await renderProjectDetail();
 }
 
 
-async function deleteTask(taskId) {
+/* =========================================================
+   RECONCILIATION TABLE
+========================================================= */
 
-    if (
-        !confirm(
-            "Delete this task and all its subtasks?"
-        )
-    ) {
+function renderReconciliation() {
+
+    const tbody =
+        document.getElementById(
+            "reconciliationTable"
+        );
+
+
+    const dates =
+        getAllDates().sort().reverse();
+
+
+    if (!dates.length) {
+
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8"
+                    class="empty">
+                    No reconciliation data.
+                </td>
+            </tr>
+        `;
+
         return;
+
     }
 
-    const { error } =
-        await supabaseClient
-            .from("tasks")
-            .delete()
-            .eq("id", taskId)
-            .eq("user_id", currentUser.id);
 
-    if (error) {
-        alert(error.message);
-        return;
-    }
+    tbody.innerHTML =
+        dates.map(date => {
 
-    await renderProjectDetail();
+            const c =
+                calculateDay(date);
+
+
+            const status =
+                c.actual === null
+                    ? "Pending"
+                    : Math.abs(c.difference) < 0.01
+                        ? "Reconciled"
+                        : "Difference";
+
+
+            return `
+                <tr>
+
+                    <td>${date}</td>
+
+                    <td>${money(c.opening)}</td>
+
+                    <td>${money(c.receipts)}</td>
+
+                    <td>${money(c.payments)}</td>
+
+                    <td>${money(c.expected)}</td>
+
+                    <td>
+                        ${c.actual === null
+                            ? "—"
+                            : money(c.actual)}
+                    </td>
+
+                    <td>
+                        ${c.difference === null
+                            ? "—"
+                            : money(c.difference)}
+                    </td>
+
+                    <td>${status}</td>
+
+                </tr>
+            `;
+
+        }).join("");
+
 }
 
 
-// ============================================
-// PROGRESS
-// ============================================
+/* =========================================================
+   DASHBOARD
+========================================================= */
 
-function calculateProjectProgress(tasks) {
+function renderDashboard() {
 
-    if (!tasks.length) return 0;
+    const calc =
+        calculateDay(currentDate);
 
-    const roots =
-        tasks.filter(task =>
-            !task.parent_task_id
+
+    document.getElementById(
+        "bankBalance"
+    ).textContent =
+        money(
+            calc.actual === null
+                ? calc.expected
+                : calc.actual
         );
 
-    if (!roots.length) return 0;
 
-    const values =
-        roots.map(root =>
-            calculateNodeProgress(
-                root.id,
-                tasks
-            )
-        );
+    document.getElementById(
+        "todayDate"
+    ).textContent =
+        currentDate;
 
-    return round(
-        values.reduce((a, b) => a + b, 0)
-        / values.length
+
+    document.getElementById(
+        "difference"
+    ).textContent =
+        calc.difference === null
+            ? "—"
+            : money(calc.difference);
+
+
+    document.getElementById(
+        "reconStatus"
+    ).textContent =
+        calc.actual === null
+            ? "Pending"
+            : Math.abs(calc.difference) < 0.01
+                ? "Reconciled"
+                : "Difference";
+
+}
+
+
+/* =========================================================
+   DATE LIST
+========================================================= */
+
+function getAllDates() {
+
+    const dates = new Set();
+
+
+    db.transactions.forEach(
+        t => dates.add(t.date)
     );
-}
 
 
-function calculateNodeProgress(
-    taskId,
-    tasks
-) {
-
-    const children =
-        tasks.filter(task =>
-            task.parent_task_id === taskId
-        );
-
-    if (!children.length) {
-
-        const task =
-            tasks.find(t => t.id === taskId);
-
-        return Number(
-            task?.progress || 0
-        );
-    }
-
-    const values =
-        children.map(child =>
-            calculateNodeProgress(
-                child.id,
-                tasks
-            )
-        );
-
-    return round(
-        values.reduce((a, b) => a + b, 0)
-        / values.length
+    db.daily.forEach(
+        d => dates.add(d.date)
     );
+
+
+    return [...dates];
+
 }
 
 
-function round(number) {
+/* =========================================================
+   MODALS
+========================================================= */
 
-    return Math.round(
-        number * 100
-    ) / 100;
-}
-
-
-// ============================================
-// DASHBOARD COUNTS
-// ============================================
-
-async function updateDashboardCounts() {
-
-    if (!currentUser) return;
-
-    const { data, error } =
-        await supabaseClient
-            .from("tasks")
-            .select("status")
-            .eq("user_id", currentUser.id);
-
-    if (error) {
-        console.error(error);
-        return;
-    }
-
-    const tasks = data || [];
-
-    document.getElementById("progressCount").textContent =
-        tasks.filter(t =>
-            t.status === "In progress"
-        ).length;
-
-    document.getElementById("issueCount").textContent =
-        tasks.filter(t =>
-            t.status === "Issues" ||
-            t.status === "Blocked"
-        ).length;
-
-    const { count } =
-        await supabaseClient
-            .from("reminders")
-            .select("*", {
-                count: "exact",
-                head: true
-            })
-            .eq("user_id", currentUser.id)
-            .eq("completed", false);
-
-    document.getElementById("reminderCount").textContent =
-        count || 0;
-}
-
-
-// ============================================
-// NAVIGATION
-// ============================================
-
-function showHome() {
-
-    currentProject = null;
+function closeModal(id) {
 
     document
-        .getElementById("projectView")
-        .classList.add("hidden");
+        .getElementById(id)
+        .classList.remove("show");
 
-    document
-        .getElementById("homeView")
-        .classList.remove("hidden");
-
-    loadProjects();
 }
 
 
-// ============================================
-// SAFETY
-// ============================================
+/* =========================================================
+   SECURITY / HTML HELPERS
+========================================================= */
 
-function escapeHTML(value) {
+function escapeHtml(value) {
 
     return String(value ?? "")
         .replaceAll("&", "&amp;")
@@ -1096,4 +1330,31 @@ function escapeHTML(value) {
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
-          }
+
+}
+
+
+function escapeAttr(value) {
+
+    return escapeHtml(value);
+
+}
+
+
+/* =========================================================
+   RENDER EVERYTHING
+========================================================= */
+
+function renderAll() {
+
+    renderDashboard();
+
+    renderDaily();
+
+    renderTransactions();
+
+    renderLedgers();
+
+    renderReconciliation();
+
+}
