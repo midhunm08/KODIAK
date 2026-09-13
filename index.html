@@ -1,265 +1,394 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KODIAK</title>
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Expense Tracker</title>
 
     <link rel="stylesheet" href="style.css">
 
-    <!-- Supabase -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- SheetJS -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 
 <body>
 
-    <!-- =========================
-         LOGIN
-    ========================== -->
+<div class="app">
 
-    <div id="loginScreen" class="screen">
-
-        <div class="login-box">
-
-            <div class="logo">KODIAK</div>
-
-            <p class="subtitle">Your personal command centre.</p>
-
-            <input
-                id="username"
-                type="text"
-                placeholder="Username"
-                autocomplete="username"
-            >
-
-            <input
-                id="password"
-                type="password"
-                placeholder="Password"
-                autocomplete="current-password"
-            >
-
-            <button id="loginBtn" onclick="login()">
-                Enter KODIAK
-            </button>
-
-            <button
-                id="signupBtn"
-                class="secondary-btn"
-                onclick="signup()"
-            >
-                Create account
-            </button>
-
-            <p id="authMessage"></p>
-
+    <!-- HEADER -->
+    <header class="topbar">
+        <div>
+            <h1>Expense Tracker</h1>
+            <span id="fileStatus">No workbook loaded</span>
         </div>
 
-    </div>
+        <div class="header-actions">
+            <button class="ghost" onclick="openFile()">
+                Open Excel
+            </button>
+
+            <button class="primary" onclick="exportExcel()">
+                Export Excel
+            </button>
+
+            <input
+                type="file"
+                id="fileInput"
+                accept=".xlsx,.xls"
+                hidden
+            >
+        </div>
+    </header>
 
 
-    <!-- =========================
-         APP
-    ========================== -->
+    <!-- DASHBOARD -->
+    <section class="dashboard">
 
-    <div id="appScreen" class="screen hidden">
+        <div class="metric">
+            <span>Bank Balance</span>
+            <strong id="bankBalance">₹0.00</strong>
+        </div>
 
-        <!-- TOP BAR -->
+        <div class="metric">
+            <span>Today</span>
+            <strong id="todayDate">—</strong>
+        </div>
 
-        <header class="topbar">
+        <div class="metric">
+            <span>Difference</span>
+            <strong id="difference">₹0.00</strong>
+        </div>
 
-            <div class="brand">
-                KODIAK
+        <div class="metric">
+            <span>Status</span>
+            <strong id="reconStatus">—</strong>
+        </div>
+
+    </section>
+
+
+    <!-- NAV -->
+    <nav class="tabs">
+
+        <button class="tab active"
+                onclick="showPage('daily', this)">
+            Daily
+        </button>
+
+        <button class="tab"
+                onclick="showPage('transactions', this)">
+            Transactions
+        </button>
+
+        <button class="tab"
+                onclick="showPage('ledgers', this)">
+            Ledgers
+        </button>
+
+        <button class="tab"
+                onclick="showPage('reconciliation', this)">
+            Reconciliation
+        </button>
+
+    </nav>
+
+
+    <!-- DAILY -->
+    <main id="daily" class="page active-page">
+
+        <div class="section-header">
+            <div>
+                <h2>Daily Reconciliation</h2>
+                <p>Opening → Transactions → Closing</p>
             </div>
 
-            <div class="top-actions">
+            <input
+                type="date"
+                id="selectedDate"
+                onchange="loadDay()"
+            >
+        </div>
 
-                <span id="welcomeUser"></span>
 
-                <button onclick="logout()" class="logout-btn">
-                    Logout
-                </button>
+        <div class="recon-box">
 
+            <div class="row">
+                <span>Opening balance</span>
+                <strong id="openingBalance">₹0.00</strong>
             </div>
 
-        </header>
+            <div class="row">
+                <span>Total receipts</span>
+                <strong id="dayReceipts">₹0.00</strong>
+            </div>
 
+            <div class="row">
+                <span>Total payments</span>
+                <strong id="dayPayments">₹0.00</strong>
+            </div>
 
-        <!-- MAIN -->
+            <div class="line"></div>
 
-        <main class="container">
+            <div class="row large">
+                <span>Expected closing</span>
+                <strong id="expectedClosing">₹0.00</strong>
+            </div>
 
-            <!-- HOME -->
+            <div class="actual-input">
+                <label>Actual bank closing</label>
 
-            <section id="homeView">
-
-                <div class="hero">
-
-                    <div>
-                        <h1>Good to see you.</h1>
-                        <p>
-                            Everything you need, in one place.
-                        </p>
-                    </div>
-
-                </div>
-
-
-                <!-- QUICK STATUS -->
-
-                <div class="status-grid">
-
-                    <div class="status-card">
-                        <span>Projects</span>
-                        <strong id="projectCount">0</strong>
-                    </div>
-
-                    <div class="status-card">
-                        <span>In Progress</span>
-                        <strong id="progressCount">0</strong>
-                    </div>
-
-                    <div class="status-card">
-                        <span>Issues</span>
-                        <strong id="issueCount">0</strong>
-                    </div>
-
-                    <div class="status-card">
-                        <span>Reminders</span>
-                        <strong id="reminderCount">0</strong>
-                    </div>
-
-                </div>
-
-
-                <!-- TOOLS -->
-
-                <div class="section-header">
-
-                    <div>
-                        <h2>Tools</h2>
-                        <p>Your KODIAK toolbox.</p>
-                    </div>
-
-                    <input
-                        id="toolSearch"
-                        type="search"
-                        placeholder="Search tools..."
-                        oninput="filterTools()"
-                    >
-
-                </div>
-
-
-                <div id="toolsGrid" class="tools-grid">
-
-                    <!-- Tools inserted by JavaScript -->
-
-                </div>
-
-
-                <!-- PROJECTS -->
-
-                <div class="section-header project-header">
-
-                    <div>
-                        <h2>Projects</h2>
-                        <p>Track everything you're working on.</p>
-                    </div>
-
-                    <button onclick="showNewProject()">
-                        + New Project
-                    </button>
-
-                </div>
-
-
-                <div id="projectsGrid" class="projects-grid">
-
-                    <!-- Projects inserted by JavaScript -->
-
-                </div>
-
-            </section>
-
-
-            <!-- PROJECT DETAIL -->
-
-            <section id="projectView" class="hidden">
-
-                <button
-                    class="back-btn"
-                    onclick="showHome()"
+                <input
+                    type="number"
+                    id="actualClosing"
+                    step="0.01"
+                    placeholder="Enter bank closing balance"
+                    onchange="saveActualClosing()"
                 >
-                    ← Back
-                </button>
+            </div>
 
-                <div id="projectDetails">
-
-                    <!-- Filled by JavaScript -->
-
-                </div>
-
-            </section>
-
-        </main>
-
-    </div>
-
-
-    <!-- =========================
-         NEW PROJECT MODAL
-    ========================== -->
-
-    <div id="projectModal" class="modal hidden">
-
-        <div class="modal-box">
-
-            <button
-                class="close-btn"
-                onclick="closeProjectModal()"
-            >
-                ×
-            </button>
-
-            <h2>New Project</h2>
-
-            <input
-                id="newProjectName"
-                type="text"
-                placeholder="Project name"
-            >
-
-            <textarea
-                id="newProjectDescription"
-                placeholder="Description (optional)"
-            ></textarea>
-
-            <label>Project colour</label>
-
-            <input
-                id="newProjectColour"
-                type="color"
-                value="#6366f1"
-            >
-
-            <button onclick="createProject()">
-                Create Project
-            </button>
-
-            <p id="projectMessage"></p>
+            <div class="row difference-row">
+                <span>Difference</span>
+                <strong id="dayDifference">₹0.00</strong>
+            </div>
 
         </div>
 
+
+        <div class="quick-actions">
+
+            <button onclick="openTransactionModal()">
+                + Transaction
+            </button>
+
+            <button onclick="reconcileDay()">
+                Reconcile
+            </button>
+
+        </div>
+
+
+        <h3>Today's transactions</h3>
+
+        <div id="dailyTransactions" class="transaction-list">
+            <div class="empty">
+                No transactions.
+            </div>
+        </div>
+
+    </main>
+
+
+    <!-- TRANSACTIONS -->
+    <main id="transactions" class="page">
+
+        <div class="section-header">
+            <div>
+                <h2>Transactions</h2>
+                <p>All entries in the workbook</p>
+            </div>
+
+            <button class="primary"
+                    onclick="openTransactionModal()">
+                + Add
+            </button>
+        </div>
+
+        <div class="table-wrap">
+
+            <table>
+
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Ledger</th>
+                        <th>Description</th>
+                        <th>Debit</th>
+                        <th>Credit</th>
+                        <th></th>
+                    </tr>
+                </thead>
+
+                <tbody id="transactionsTable"></tbody>
+
+            </table>
+
+        </div>
+
+    </main>
+
+
+    <!-- LEDGERS -->
+    <main id="ledgers" class="page">
+
+        <div class="section-header">
+
+            <div>
+                <h2>Ledgers</h2>
+                <p>Create and manage your accounts</p>
+            </div>
+
+            <button class="primary"
+                    onclick="openLedgerModal()">
+                + Ledger
+            </button>
+
+        </div>
+
+        <div id="ledgerGrid" class="ledger-grid"></div>
+
+    </main>
+
+
+    <!-- RECONCILIATION -->
+    <main id="reconciliation" class="page">
+
+        <div class="section-header">
+
+            <div>
+                <h2>Reconciliation</h2>
+                <p>Daily bank reconciliation history</p>
+            </div>
+
+        </div>
+
+        <div class="table-wrap">
+
+            <table>
+
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Opening</th>
+                        <th>Receipts</th>
+                        <th>Payments</th>
+                        <th>Expected</th>
+                        <th>Actual</th>
+                        <th>Difference</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+
+                <tbody id="reconciliationTable"></tbody>
+
+            </table>
+
+        </div>
+
+    </main>
+
+</div>
+
+
+<!-- TRANSACTION MODAL -->
+<div id="transactionModal" class="modal">
+
+    <div class="modal-box">
+
+        <div class="modal-header">
+            <h2>New Transaction</h2>
+            <button onclick="closeModal('transactionModal')">×</button>
+        </div>
+
+        <label>Date</label>
+        <input type="date" id="txDate">
+
+        <label>Ledger</label>
+        <select id="txLedger"></select>
+
+        <label>Description</label>
+        <input
+            type="text"
+            id="txDescription"
+            placeholder="What was this for?"
+        >
+
+        <div class="two-col">
+
+            <div>
+                <label>Debit</label>
+                <input
+                    type="number"
+                    id="txDebit"
+                    step="0.01"
+                    placeholder="0.00"
+                >
+            </div>
+
+            <div>
+                <label>Credit</label>
+                <input
+                    type="number"
+                    id="txCredit"
+                    step="0.01"
+                    placeholder="0.00"
+                >
+            </div>
+
+        </div>
+
+        <button class="primary full"
+                onclick="saveTransaction()">
+            Save Transaction
+        </button>
+
     </div>
 
+</div>
 
-    <!-- =========================
-         JAVASCRIPT
-    ========================== -->
 
-    <script src="config.js"></script>
-    <script src="app.js"></script>
+<!-- LEDGER MODAL -->
+<div id="ledgerModal" class="modal">
+
+    <div class="modal-box">
+
+        <div class="modal-header">
+            <h2>New Ledger</h2>
+            <button onclick="closeModal('ledgerModal')">×</button>
+        </div>
+
+        <label>Ledger name</label>
+
+        <input
+            type="text"
+            id="ledgerName"
+            placeholder="e.g. Groceries"
+        >
+
+        <label>Ledger type</label>
+
+        <select id="ledgerType">
+
+            <option value="Asset">Asset</option>
+            <option value="Liability">Liability</option>
+            <option value="Expense">Expense</option>
+            <option value="Income">Income</option>
+            <option value="Equity">Equity</option>
+
+        </select>
+
+        <label>Opening balance</label>
+
+        <input
+            type="number"
+            id="ledgerOpening"
+            value="0"
+            step="0.01"
+        >
+
+        <button class="primary full"
+                onclick="saveLedger()">
+            Create Ledger
+        </button>
+
+    </div>
+
+</div>
+
+
+<script src="app.js"></script>
 
 </body>
 </html>
