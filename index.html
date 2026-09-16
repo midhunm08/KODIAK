@@ -1,394 +1,206 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
 
-    <title>Expense Tracker</title>
+  <title>KODIAK</title>
 
-    <link rel="stylesheet" href="style.css">
-
-    <!-- SheetJS -->
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-<div class="app">
+  <!-- ================= LOGIN ================= -->
 
-    <!-- HEADER -->
+  <section id="loginScreen" class="screen">
+
+    <div class="auth-card">
+
+      <div class="logo">K</div>
+
+      <h1>KODIAK</h1>
+      <p class="subtitle">Project Tracker</p>
+
+      <div id="loginMessage" class="message"></div>
+
+      <input
+        id="loginUsername"
+        type="text"
+        placeholder="Username"
+        autocomplete="username"
+      >
+
+      <input
+        id="loginPassword"
+        type="password"
+        placeholder="Password"
+        autocomplete="current-password"
+      >
+
+      <button onclick="login()" class="primary-btn">
+        Login
+      </button>
+
+      <button onclick="showRegister()" class="text-btn">
+        Create new account
+      </button>
+
+    </div>
+
+  </section>
+
+
+  <!-- ================= REGISTER ================= -->
+
+  <section id="registerScreen" class="screen hidden">
+
+    <div class="auth-card">
+
+      <div class="logo">K</div>
+
+      <h1>Create account</h1>
+      <p class="subtitle">Simple KODIAK account</p>
+
+      <div id="registerMessage" class="message"></div>
+
+      <input
+        id="registerUsername"
+        type="text"
+        placeholder="Username"
+      >
+
+      <input
+        id="registerDisplayName"
+        type="text"
+        placeholder="Display name"
+      >
+
+      <input
+        id="registerPassword"
+        type="password"
+        placeholder="Password"
+      >
+
+      <button onclick="register()" class="primary-btn">
+        Create account
+      </button>
+
+      <button onclick="showLogin()" class="text-btn">
+        ← Back to login
+      </button>
+
+    </div>
+
+  </section>
+
+
+  <!-- ================= APP ================= -->
+
+  <section id="appScreen" class="hidden">
+
     <header class="topbar">
-        <div>
-            <h1>Expense Tracker</h1>
-            <span id="fileStatus">No workbook loaded</span>
-        </div>
 
-        <div class="header-actions">
-            <button class="ghost" onclick="openFile()">
-                Open Excel
-            </button>
+      <div>
+        <div class="brand">KODIAK</div>
+        <div id="welcomeUser" class="welcome"></div>
+      </div>
 
-            <button class="primary" onclick="exportExcel()">
-                Export Excel
-            </button>
+      <button onclick="logout()" class="logout-btn">
+        Logout
+      </button>
 
-            <input
-                type="file"
-                id="fileInput"
-                accept=".xlsx,.xls"
-                hidden
-            >
-        </div>
     </header>
 
 
-    <!-- DASHBOARD -->
-    <section class="dashboard">
+    <main class="container">
 
-        <div class="metric">
-            <span>Bank Balance</span>
-            <strong id="bankBalance">₹0.00</strong>
+      <div class="dashboard-head">
+
+        <div>
+          <h2>Projects</h2>
+          <p>Your projects at a glance.</p>
         </div>
 
-        <div class="metric">
-            <span>Today</span>
-            <strong id="todayDate">—</strong>
-        </div>
-
-        <div class="metric">
-            <span>Difference</span>
-            <strong id="difference">₹0.00</strong>
-        </div>
-
-        <div class="metric">
-            <span>Status</span>
-            <strong id="reconStatus">—</strong>
-        </div>
-
-    </section>
-
-
-    <!-- NAV -->
-    <nav class="tabs">
-
-        <button class="tab active"
-                onclick="showPage('daily', this)">
-            Daily
+        <button onclick="openProjectModal()" class="primary-btn small">
+          + New Project
         </button>
 
-        <button class="tab"
-                onclick="showPage('transactions', this)">
-            Transactions
-        </button>
+      </div>
 
-        <button class="tab"
-                onclick="showPage('ledgers', this)">
-            Ledgers
-        </button>
 
-        <button class="tab"
-                onclick="showPage('reconciliation', this)">
-            Reconciliation
-        </button>
+      <div class="toolbar">
 
-    </nav>
-
-
-    <!-- DAILY -->
-    <main id="daily" class="page active-page">
-
-        <div class="section-header">
-            <div>
-                <h2>Daily Reconciliation</h2>
-                <p>Opening → Transactions → Closing</p>
-            </div>
-
-            <input
-                type="date"
-                id="selectedDate"
-                onchange="loadDay()"
-            >
-        </div>
-
-
-        <div class="recon-box">
-
-            <div class="row">
-                <span>Opening balance</span>
-                <strong id="openingBalance">₹0.00</strong>
-            </div>
-
-            <div class="row">
-                <span>Total receipts</span>
-                <strong id="dayReceipts">₹0.00</strong>
-            </div>
-
-            <div class="row">
-                <span>Total payments</span>
-                <strong id="dayPayments">₹0.00</strong>
-            </div>
-
-            <div class="line"></div>
-
-            <div class="row large">
-                <span>Expected closing</span>
-                <strong id="expectedClosing">₹0.00</strong>
-            </div>
-
-            <div class="actual-input">
-                <label>Actual bank closing</label>
-
-                <input
-                    type="number"
-                    id="actualClosing"
-                    step="0.01"
-                    placeholder="Enter bank closing balance"
-                    onchange="saveActualClosing()"
-                >
-            </div>
-
-            <div class="row difference-row">
-                <span>Difference</span>
-                <strong id="dayDifference">₹0.00</strong>
-            </div>
-
-        </div>
-
-
-        <div class="quick-actions">
-
-            <button onclick="openTransactionModal()">
-                + Transaction
-            </button>
-
-            <button onclick="reconcileDay()">
-                Reconcile
-            </button>
-
-        </div>
-
-
-        <h3>Today's transactions</h3>
-
-        <div id="dailyTransactions" class="transaction-list">
-            <div class="empty">
-                No transactions.
-            </div>
-        </div>
-
-    </main>
-
-
-    <!-- TRANSACTIONS -->
-    <main id="transactions" class="page">
-
-        <div class="section-header">
-            <div>
-                <h2>Transactions</h2>
-                <p>All entries in the workbook</p>
-            </div>
-
-            <button class="primary"
-                    onclick="openTransactionModal()">
-                + Add
-            </button>
-        </div>
-
-        <div class="table-wrap">
-
-            <table>
-
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Ledger</th>
-                        <th>Description</th>
-                        <th>Debit</th>
-                        <th>Credit</th>
-                        <th></th>
-                    </tr>
-                </thead>
-
-                <tbody id="transactionsTable"></tbody>
-
-            </table>
-
-        </div>
-
-    </main>
-
-
-    <!-- LEDGERS -->
-    <main id="ledgers" class="page">
-
-        <div class="section-header">
-
-            <div>
-                <h2>Ledgers</h2>
-                <p>Create and manage your accounts</p>
-            </div>
-
-            <button class="primary"
-                    onclick="openLedgerModal()">
-                + Ledger
-            </button>
-
-        </div>
-
-        <div id="ledgerGrid" class="ledger-grid"></div>
-
-    </main>
-
-
-    <!-- RECONCILIATION -->
-    <main id="reconciliation" class="page">
-
-        <div class="section-header">
-
-            <div>
-                <h2>Reconciliation</h2>
-                <p>Daily bank reconciliation history</p>
-            </div>
-
-        </div>
-
-        <div class="table-wrap">
-
-            <table>
-
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Opening</th>
-                        <th>Receipts</th>
-                        <th>Payments</th>
-                        <th>Expected</th>
-                        <th>Actual</th>
-                        <th>Difference</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-
-                <tbody id="reconciliationTable"></tbody>
-
-            </table>
-
-        </div>
-
-    </main>
-
-</div>
-
-
-<!-- TRANSACTION MODAL -->
-<div id="transactionModal" class="modal">
-
-    <div class="modal-box">
-
-        <div class="modal-header">
-            <h2>New Transaction</h2>
-            <button onclick="closeModal('transactionModal')">×</button>
-        </div>
-
-        <label>Date</label>
-        <input type="date" id="txDate">
-
-        <label>Ledger</label>
-        <select id="txLedger"></select>
-
-        <label>Description</label>
         <input
-            type="text"
-            id="txDescription"
-            placeholder="What was this for?"
+          id="searchBox"
+          type="search"
+          placeholder="Search projects..."
+          oninput="renderProjects()"
         >
 
-        <div class="two-col">
+      </div>
 
-            <div>
-                <label>Debit</label>
-                <input
-                    type="number"
-                    id="txDebit"
-                    step="0.01"
-                    placeholder="0.00"
-                >
-            </div>
 
-            <div>
-                <label>Credit</label>
-                <input
-                    type="number"
-                    id="txCredit"
-                    step="0.01"
-                    placeholder="0.00"
-                >
-            </div>
+      <div id="projectsList" class="projects-grid">
 
+        <div class="empty-state">
+          Loading projects...
         </div>
 
-        <button class="primary full"
-                onclick="saveTransaction()">
-            Save Transaction
+      </div>
+
+    </main>
+
+  </section>
+
+
+  <!-- ================= PROJECT MODAL ================= -->
+
+  <div id="projectModal" class="modal hidden">
+
+    <div class="modal-card">
+
+      <div class="modal-head">
+
+        <h2>New Project</h2>
+
+        <button onclick="closeProjectModal()" class="close-btn">
+          ×
         </button>
+
+      </div>
+
+      <input
+        id="projectName"
+        type="text"
+        placeholder="Project name"
+      >
+
+      <textarea
+        id="projectDescription"
+        placeholder="Description (optional)"
+      ></textarea>
+
+      <label>Project colour</label>
+
+      <input
+        id="projectColor"
+        type="color"
+        value="#7c3aed"
+      >
+
+      <button onclick="createProject()" class="primary-btn">
+        Create Project
+      </button>
 
     </div>
 
-</div>
+  </div>
 
 
-<!-- LEDGER MODAL -->
-<div id="ledgerModal" class="modal">
-
-    <div class="modal-box">
-
-        <div class="modal-header">
-            <h2>New Ledger</h2>
-            <button onclick="closeModal('ledgerModal')">×</button>
-        </div>
-
-        <label>Ledger name</label>
-
-        <input
-            type="text"
-            id="ledgerName"
-            placeholder="e.g. Groceries"
-        >
-
-        <label>Ledger type</label>
-
-        <select id="ledgerType">
-
-            <option value="Asset">Asset</option>
-            <option value="Liability">Liability</option>
-            <option value="Expense">Expense</option>
-            <option value="Income">Income</option>
-            <option value="Equity">Equity</option>
-
-        </select>
-
-        <label>Opening balance</label>
-
-        <input
-            type="number"
-            id="ledgerOpening"
-            value="0"
-            step="0.01"
-        >
-
-        <button class="primary full"
-                onclick="saveLedger()">
-            Create Ledger
-        </button>
-
-    </div>
-
-</div>
-
-
-<script src="app.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
 
 </body>
 </html>
