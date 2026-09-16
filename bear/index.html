@@ -1,50 +1,941 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BEAR</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>BEAR — Daily Reflection</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #101010;
+  color: #eee;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+#app {
+  max-width: 720px;
+  margin: auto;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+h1 {
+  text-align: center;
+  margin: 10px 0 3px;
+  font-size: 34px;
+}
+
+.subtitle {
+  text-align: center;
+  color: #999;
+  margin-bottom: 25px;
+}
+
+.card {
+  background: #191919;
+  border: 1px solid #292929;
+  border-radius: 18px;
+  padding: 20px;
+  margin-bottom: 15px;
+}
+
+button {
+  width: 100%;
+  padding: 14px;
+  border: 0;
+  border-radius: 12px;
+  background: #eee;
+  color: #111;
+  font-size: 15px;
+  font-weight: 600;
+  margin-top: 10px;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #292929;
+  color: #eee;
+}
+
+input, textarea {
+  width: 100%;
+  background: #111;
+  color: #eee;
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 13px;
+  font-size: 15px;
+  outline: none;
+}
+
+textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+label {
+  display: block;
+  margin: 15px 0 7px;
+  color: #bbb;
+  font-size: 14px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+#chat {
+  height: 58vh;
+  overflow-y: auto;
+  padding: 5px;
+}
+
+.message {
+  margin: 10px 0;
+  padding: 13px 15px;
+  border-radius: 15px;
+  max-width: 88%;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.bear {
+  background: #252525;
+  margin-right: auto;
+}
+
+.user {
+  background: #eee;
+  color: #111;
+  margin-left: auto;
+}
+
+.chatInput {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.chatInput textarea {
+  min-height: 50px;
+  max-height: 130px;
+}
+
+.chatInput button {
+  width: 80px;
+  margin: 0;
+}
+
+.result h2 {
+  margin-top: 0;
+}
+
+.score {
+  font-size: 55px;
+  font-weight: 700;
+  text-align: center;
+  margin: 10px;
+}
+
+.verdict {
+  text-align: center;
+  font-size: 22px;
+  margin-bottom: 20px;
+}
+
+.dimension {
+  margin: 12px 0;
+}
+
+.bar {
+  height: 8px;
+  background: #333;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-top: 5px;
+}
+
+.bar div {
+  height: 100%;
+  background: #eee;
+}
+
+.small {
+  color: #888;
+  font-size: 13px;
+  text-align: center;
+}
+
+#status {
+  text-align: center;
+  color: #aaa;
+  margin: 10px;
+}
+</style>
 </head>
 
 <body>
 
-  <div class="app">
+<div id="app">
 
-    <div class="bear">🐻</div>
+  <h1>🐻 BEAR</h1>
+  <div class="subtitle">Your day. Your thoughts. One honest reflection.</div>
 
-    <h1>BEAR</h1>
+  <!-- START SCREEN -->
+  <div id="startScreen">
 
-    <p class="subtitle">Your day, remembered.</p>
-
-    <div id="home">
-
-      <h2>Good evening.</h2>
-
-      <p>
-        Let's look back at your day.
-        You tell me what happened.
-        I'll remember it.
+    <div class="card">
+      <h3>Welcome back.</h3>
+      <p style="color:#aaa">
+        Load your previous BEAR file so I can remember your past days,
+        or start a completely new journal.
       </p>
 
-      <button id="newSave">✨ Start New Save</button>
+      <button onclick="newSave()">✨ Start New BEAR</button>
 
-      <button id="loadSave" class="secondary">
-        📂 Load Existing Save
+      <button class="secondary" onclick="document.getElementById('fileInput').click()">
+        📂 Load Previous BEAR File
       </button>
 
       <input
-        type="file"
         id="fileInput"
-        accept=".json"
-        hidden
+        type="file"
+        accept=".json,application/json"
+        class="hidden"
+        onchange="loadFile(event)"
       >
+    </div>
+
+    <div class="card">
+      <h3>Gemini API Key</h3>
+
+      <label>Your key</label>
+
+      <input
+        id="apiKey"
+        type="password"
+        placeholder="Paste your Gemini API key"
+      >
+
+      <p class="small">
+        The key is used directly by this page. Do not put your key inside GitHub code.
+      </p>
+    </div>
+
+  </div>
+
+
+  <!-- CHAT SCREEN -->
+  <div id="chatScreen" class="hidden">
+
+    <div class="card">
+
+      <div id="chat"></div>
+
+      <div id="status"></div>
+
+      <div class="chatInput">
+
+        <textarea
+          id="messageInput"
+          placeholder="Tell BEAR about your day..."
+        ></textarea>
+
+        <button onclick="sendMessage()">Send</button>
+
+      </div>
+
+      <button
+        class="secondary"
+        onclick="finishDay()"
+      >
+        🐻 Finish My Day
+      </button>
 
     </div>
 
   </div>
 
-  <script src="bear.js"></script>
+
+  <!-- RESULT SCREEN -->
+  <div id="resultScreen" class="hidden">
+
+    <div class="card result">
+
+      <h2>Today's BEAR Report</h2>
+
+      <div id="resultContent"></div>
+
+      <button onclick="downloadSave()">
+        💾 Save Updated BEAR File
+      </button>
+
+      <button
+        class="secondary"
+        onclick="location.reload()"
+      >
+        ← Back to BEAR
+      </button>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+<script>
+
+/* =========================================================
+   BEAR
+   One-file daily reflection app
+   ========================================================= */
+
+let bearSave = null;
+let conversation = [];
+let todayReport = null;
+
+
+/* ---------------------------------------------------------
+   CREATE NEW SAVE
+   --------------------------------------------------------- */
+
+function newSave() {
+
+  bearSave = {
+    bearVersion: "1.0",
+    created: new Date().toISOString(),
+    days: []
+  };
+
+  startChat();
+}
+
+
+/* ---------------------------------------------------------
+   LOAD OLD SAVE
+   --------------------------------------------------------- */
+
+function loadFile(event) {
+
+  const file = event.target.files[0];
+
+  if (!file) return;
+
+  const reader = new FileReader();
+
+  reader.onload = function(e) {
+
+    try {
+
+      const data = JSON.parse(e.target.result);
+
+      if (!data.days || !Array.isArray(data.days)) {
+        alert("This doesn't look like a BEAR save file.");
+        return;
+      }
+
+      bearSave = data;
+
+      startChat();
+
+    } catch(error) {
+
+      alert("Couldn't read that JSON file.");
+
+    }
+
+  };
+
+  reader.readAsText(file);
+}
+
+
+/* ---------------------------------------------------------
+   START CHAT
+   --------------------------------------------------------- */
+
+function startChat() {
+
+  const key = document.getElementById("apiKey").value.trim();
+
+  if (!key) {
+
+    alert("Enter your Gemini API key first.");
+
+    return;
+  }
+
+  document.getElementById("startScreen").classList.add("hidden");
+
+  document.getElementById("chatScreen").classList.remove("hidden");
+
+  conversation = [];
+
+  addMessage(
+    "bear",
+    "Hey. I'm BEAR. 🐻\n\nTell me about your day. Start wherever you want — work, people, thoughts, something that happened, something that didn't happen.\n\nI'm listening."
+  );
+
+}
+
+
+/* ---------------------------------------------------------
+   CHAT DISPLAY
+   --------------------------------------------------------- */
+
+function addMessage(type, text) {
+
+  const chat = document.getElementById("chat");
+
+  const div = document.createElement("div");
+
+  div.className = "message " + type;
+
+  div.textContent = text;
+
+  chat.appendChild(div);
+
+  chat.scrollTop = chat.scrollHeight;
+}
+
+
+/* ---------------------------------------------------------
+   SEND USER MESSAGE
+   --------------------------------------------------------- */
+
+async function sendMessage() {
+
+  const input = document.getElementById("messageInput");
+
+  const text = input.value.trim();
+
+  if (!text) return;
+
+  input.value = "";
+
+  addMessage("user", text);
+
+  conversation.push({
+    role: "user",
+    text: text
+  });
+
+  await bearRespond(text);
+}
+
+
+/* ---------------------------------------------------------
+   BEAR RESPONSE
+   --------------------------------------------------------- */
+
+async function bearRespond(userText) {
+
+  const key = document.getElementById("apiKey").value.trim();
+
+  document.getElementById("status").textContent =
+    "BEAR is thinking...";
+
+
+  const previousDays = bearSave.days
+    .slice(-7)
+    .map(d => ({
+      date: d.date,
+      score: d.score,
+      verdict: d.verdict,
+      mood: d.mood,
+      energy: d.energy,
+      productivity: d.productivity,
+      mental_state: d.mental_state,
+      relationships: d.relationships,
+      growth: d.growth,
+      observation: d.bear_observation
+    }));
+
+
+  const prompt = `
+You are BEAR, a personal daily reflection companion.
+
+The user is telling you about their day.
+
+Previous days:
+${JSON.stringify(previousDays, null, 2)}
+
+Conversation so far:
+${JSON.stringify(conversation, null, 2)}
+
+Respond naturally and briefly.
+
+Your job is NOT to immediately analyze the day.
+
+Instead:
+- listen
+- ask useful follow-up questions
+- notice missing important areas
+- ask about emotions when relevant
+- ask about work/productivity when relevant
+- ask about relationships when relevant
+- ask about physical energy when relevant
+- ask about meaningful moments
+- avoid repetitive questions
+- don't interrogate the user
+- don't invent anything
+
+You are having a conversation with the user.
+
+Reply only with what BEAR should say next.
+`;
+
+  try {
+
+    const reply = await callGemini(key, prompt);
+
+    document.getElementById("status").textContent = "";
+
+    addMessage("bear", reply);
+
+    conversation.push({
+      role: "bear",
+      text: reply
+    });
+
+  } catch(error) {
+
+    document.getElementById("status").textContent = "";
+
+    alert("Gemini error:\n\n" + error.message);
+
+  }
+}
+
+
+/* ---------------------------------------------------------
+   FINISH DAY
+   --------------------------------------------------------- */
+
+async function finishDay() {
+
+  if (conversation.length < 2) {
+
+    alert("Tell BEAR a little more about your day first.");
+
+    return;
+  }
+
+  const key = document.getElementById("apiKey").value.trim();
+
+  document.getElementById("status").textContent =
+    "BEAR is analyzing your entire day...";
+
+
+  const previousDays = bearSave.days.slice(-30);
+
+
+  const prompt = `
+You are BEAR, a personal daily reflection and life-analysis assistant.
+
+Analyze the user's COMPLETE DAY based ONLY on the conversation.
+
+Do not invent events, feelings or circumstances.
+
+Previous historical data:
+${JSON.stringify(previousDays, null, 2)}
+
+Today's conversation:
+${JSON.stringify(conversation, null, 2)}
+
+Give an honest, balanced analysis.
+
+A productive day is not automatically a good day.
+A difficult day is not automatically a failure.
+
+Look at:
+- mood
+- physical energy
+- productivity
+- mental state
+- relationships
+- personal growth
+- enjoyment
+- difficulties
+- meaningful moments
+
+Compare with previous days only when there is enough evidence.
+Do not manufacture patterns.
+
+Write the diary naturally, like a real human diary.
+Do not make it sound like an AI report.
+
+Return ONLY valid JSON.
+
+Use exactly this structure:
+
+{
+  "score": number from 0 to 100,
+  "verdict": "Good" or "Average" or "Bad",
+  "mood": number from 0 to 100,
+  "energy": number from 0 to 100,
+  "productivity": number from 0 to 100,
+  "mental_state": number from 0 to 100,
+  "relationships": number from 0 to 100,
+  "growth": number from 0 to 100,
+  "summary": "short honest summary",
+  "bear_observation": "BEAR's personal observation",
+  "patterns": "important patterns noticed, if any",
+  "diary": "natural diary entry written in first person"
+}
+`;
+
+
+  try {
+
+    const raw = await callGemini(key, prompt);
+
+    const report = extractJSON(raw);
+
+    todayReport = report;
+
+    const today = new Date()
+      .toISOString()
+      .slice(0, 10);
+
+
+    bearSave.days.push({
+
+      date: today,
+
+      conversation: conversation,
+
+      ...report
+
+    });
+
+
+    document.getElementById("chatScreen")
+      .classList.add("hidden");
+
+    document.getElementById("resultScreen")
+      .classList.remove("hidden");
+
+    displayReport(report);
+
+    document.getElementById("status").textContent = "";
+
+  } catch(error) {
+
+    document.getElementById("status").textContent = "";
+
+    alert("Couldn't finish the analysis:\n\n" + error.message);
+
+  }
+}
+
+
+/* ---------------------------------------------------------
+   GEMINI API
+   --------------------------------------------------------- */
+
+async function callGemini(apiKey, prompt) {
+
+  const url =
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="
+    + encodeURIComponent(apiKey);
+
+
+  const response = await fetch(url, {
+
+    method: "POST",
+
+    headers: {
+      "Content-Type": "application/json"
+    },
+
+    body: JSON.stringify({
+
+      contents: [
+        {
+          parts: [
+            {
+              text: prompt
+            }
+          ]
+        }
+      ],
+
+      generationConfig: {
+
+        temperature: 0.7,
+
+        responseMimeType: "application/json"
+
+      }
+
+    })
+
+  });
+
+
+  const data = await response.json();
+
+
+  if (!response.ok) {
+
+    throw new Error(
+      data?.error?.message ||
+      "Gemini request failed."
+    );
+
+  }
+
+
+  const text =
+    data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+
+  if (!text) {
+
+    throw new Error("Gemini returned no response.");
+
+  }
+
+
+  return text;
+}
+
+
+/* ---------------------------------------------------------
+   EXTRACT JSON
+   --------------------------------------------------------- */
+
+function extractJSON(text) {
+
+  text = text.trim();
+
+  try {
+
+    return JSON.parse(text);
+
+  } catch(e) {}
+
+  const start = text.indexOf("{");
+
+  const end = text.lastIndexOf("}");
+
+  if (start === -1 || end === -1) {
+
+    throw new Error("Gemini did not return valid JSON.");
+
+  }
+
+  try {
+
+    return JSON.parse(
+      text.substring(start, end + 1)
+    );
+
+  } catch(e) {
+
+    throw new Error("Couldn't parse BEAR's analysis.");
+
+  }
+}
+
+
+/* ---------------------------------------------------------
+   DISPLAY REPORT
+   --------------------------------------------------------- */
+
+function displayReport(r) {
+
+  const box = document.getElementById("resultContent");
+
+
+  const dimensions = [
+
+    ["Mood", r.mood],
+
+    ["Energy", r.energy],
+
+    ["Productivity", r.productivity],
+
+    ["Mental state", r.mental_state],
+
+    ["Relationships", r.relationships],
+
+    ["Personal growth", r.growth]
+
+  ];
+
+
+  let html = `
+
+    <div class="score">
+      ${r.score}
+    </div>
+
+    <div class="verdict">
+      ${escapeHTML(r.verdict)}
+    </div>
+
+    <p>
+      ${escapeHTML(r.summary)}
+    </p>
+
+    <hr style="border-color:#292929">
+
+  `;
+
+
+  dimensions.forEach(function(d) {
+
+    html += `
+
+      <div class="dimension">
+
+        <div>
+          ${escapeHTML(d[0])}
+          <span style="float:right">
+            ${d[1]}/100
+          </span>
+        </div>
+
+        <div class="bar">
+          <div style="width:${Math.max(0,Math.min(100,d[1]))}%"></div>
+        </div>
+
+      </div>
+
+    `;
+
+  });
+
+
+  html += `
+
+    <hr style="border-color:#292929">
+
+    <h3>🐻 BEAR noticed</h3>
+
+    <p>${escapeHTML(r.bear_observation)}</p>
+
+    <h3>Patterns</h3>
+
+    <p>${escapeHTML(r.patterns)}</p>
+
+    <h3>Your diary</h3>
+
+    <p style="line-height:1.7">
+      ${escapeHTML(r.diary)}
+    </p>
+
+  `;
+
+
+  box.innerHTML = html;
+}
+
+
+/* ---------------------------------------------------------
+   DOWNLOAD UPDATED SAVE
+   --------------------------------------------------------- */
+
+function downloadSave() {
+
+  if (!bearSave) return;
+
+
+  const data = JSON.stringify(
+    bearSave,
+    null,
+    2
+  );
+
+
+  const blob = new Blob(
+    [data],
+    {
+      type: "application/json"
+    }
+  );
+
+
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+
+  link.href = url;
+
+  link.download =
+    "BEAR_SAVE_" +
+    new Date().toISOString().slice(0,10) +
+    ".json";
+
+
+  document.body.appendChild(link);
+
+  link.click();
+
+  document.body.removeChild(link);
+
+  setTimeout(
+    () => URL.revokeObjectURL(url),
+    1000
+  );
+
+}
+
+
+/* ---------------------------------------------------------
+   BASIC HTML ESCAPE
+   --------------------------------------------------------- */
+
+function escapeHTML(value) {
+
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return String(value)
+
+    .replace(/&/g, "&amp;")
+
+    .replace(/</g, "&lt;")
+
+    .replace(/>/g, "&gt;")
+
+    .replace(/"/g, "&quot;")
+
+    .replace(/'/g, "&#039;")
+
+    .replace(/\n/g, "<br>");
+
+}
+
+
+/* ---------------------------------------------------------
+   ENTER KEY
+   --------------------------------------------------------- */
+
+document
+  .getElementById("messageInput")
+  .addEventListener("keydown", function(e) {
+
+    if (e.key === "Enter" && !e.shiftKey) {
+
+      e.preventDefault();
+
+      sendMessage();
+
+    }
+
+  });
+
+</script>
 
 </body>
 </html>
