@@ -1,1360 +1,579 @@
 /* =========================================================
-   EXPENSE TRACKER
-   Excel-based personal accounting / bank reconciliation
-========================================================= */
+   KODIAK PROJECT TRACKER
+   ========================================================= */
+
+let currentUser = null;
+let projects = [];
 
 
 /* =========================================================
-   DATA
-========================================================= */
+   API
+   ========================================================= */
 
-let db = {
-    ledgers: [],
-    transactions: [],
-    daily: []
-};
+async function api(action, data = {}) {
 
-let currentDate = today();
+  try {
+
+    const response = await fetch(API_URL, {
+
+      method: "POST",
+
+      body: JSON.stringify({
+        action: action,
+        ...data
+      })
+
+    });
+
+    const result = await response.json();
+
+    return result;
+
+  } catch (error) {
+
+    console.error("API ERROR:", error);
+
+    return {
+      success: false,
+      message: "Unable to connect to KODIAK."
+    };
+
+  }
+
+}
 
 
 /* =========================================================
    STARTUP
-========================================================= */
+   ========================================================= */
 
 document.addEventListener("DOMContentLoaded", () => {
 
-    document.getElementById("selectedDate").value = currentDate;
+  const savedUser = localStorage.getItem("kodiak_user");
 
-    document.getElementById("txDate").value = currentDate;
+  if (savedUser) {
 
-    document
-        .getElementById("fileInput")
-        .addEventListener("change", importExcel);
+    try {
 
-    loadLocal();
+      currentUser = JSON.parse(savedUser);
 
-    renderAll();
+      showApp();
+
+    } catch {
+
+      localStorage.removeItem("kodiak_user");
+
+    }
+
+  }
 
 });
 
 
 /* =========================================================
-   BASIC HELPERS
-========================================================= */
+   LOGIN
+   ========================================================= */
 
-function today() {
+async function login() {
 
-    const d = new Date();
+  const username =
+    document.getElementById("loginUsername").value.trim();
 
-    return d.getFullYear() +
-        "-" +
-        String(d.getMonth() + 1).padStart(2, "0") +
-        "-" +
-        String(d.getDate()).padStart(2, "0");
-}
+  const password =
+    document.getElementById("loginPassword").value;
 
-
-function money(value) {
-
-    return new Intl.NumberFormat("en-IN", {
-        style: "currency",
-        currency: "INR",
-        minimumFractionDigits: 2
-    }).format(Number(value) || 0);
-
-}
+  const message =
+    document.getElementById("loginMessage");
 
 
-function id() {
+  if (!username || !password) {
 
-    return crypto.randomUUID
-        ? crypto.randomUUID()
-        : Date.now().toString(36) +
-          Math.random().toString(36).slice(2);
+    message.textContent =
+      "Enter username and password.";
 
-}
+    return;
 
-
-function saveLocal() {
-
-    localStorage.setItem(
-        "expenseTrackerDB",
-        JSON.stringify(db)
-    );
-
-}
+  }
 
 
-function loadLocal() {
+  message.textContent = "Logging in...";
 
-    const saved = localStorage.getItem(
-        "expenseTrackerDB"
-    );
 
-    if (!saved) return;
+  const result = await api("login", {
 
-    try {
+    username: username,
+    password: password
 
-        db = JSON.parse(saved);
+  });
 
-    } catch {
 
-        console.log("Could not load saved data.");
+  if (!result.success) {
 
-    }
+    message.textContent =
+      result.message || "Invalid username or password.";
+
+    return;
+
+  }
+
+
+  currentUser = result.user || result.data;
+
+  localStorage.setItem(
+    "kodiak_user",
+    JSON.stringify(currentUser)
+  );
+
+
+  showApp();
 
 }
 
 
 /* =========================================================
-   NAVIGATION
-========================================================= */
+   REGISTER
+   ========================================================= */
 
-function showPage(pageId, button) {
+async function register() {
 
-    document
-        .querySelectorAll(".page")
-        .forEach(page =>
-            page.classList.remove("active-page")
-        );
+  const username =
+    document.getElementById("registerUsername")
+      .value.trim();
 
-    document
-        .getElementById(pageId)
-        .classList.add("active-page");
+  const displayName =
+    document.getElementById("registerDisplayName")
+      .value.trim();
 
-    document
-        .querySelectorAll(".tab")
-        .forEach(tab =>
-            tab.classList.remove("active")
-        );
-
-    button.classList.add("active");
-
-    renderAll();
-
-}
+  const password =
+    document.getElementById("registerPassword")
+      .value;
 
 
-/* =========================================================
-   FILE IMPORT
-========================================================= */
-
-function openFile() {
-
-    document
-        .getElementById("fileInput")
-        .click();
-
-}
+  const message =
+    document.getElementById("registerMessage");
 
 
-async function importExcel(event) {
+  if (!username || !displayName || !password) {
 
-    const file = event.target.files[0];
+    message.textContent =
+      "Fill all fields.";
 
-    if (!file) return;
+    return;
 
-    try {
-
-        const buffer = await file.arrayBuffer();
-
-        const workbook = XLSX.read(buffer, {
-            type: "array"
-        });
-
-        const imported = {
-            ledgers: [],
-            transactions: [],
-            daily: []
-        };
+  }
 
 
-        /* -------------------------
-           LEDGERS
-        ------------------------- */
-
-        if (workbook.SheetNames.includes("Ledgers")) {
-
-            const sheet =
-                workbook.Sheets["Ledgers"];
-
-            const rows =
-                XLSX.utils.sheet_to_json(sheet);
-
-            imported.ledgers = rows.map(row => ({
-                id: row.ID || id(),
-                name: row.Ledger || "",
-                type: row.Type || "Expense",
-                opening: Number(row["Opening Balance"] || 0)
-            }));
-
-        }
+  message.textContent =
+    "Creating account...";
 
 
-        /* -------------------------
-           TRANSACTIONS
-        ------------------------- */
+  const result = await api("createUser", {
 
-        if (workbook.SheetNames.includes("Transactions")) {
+    username: username,
+    displayName: displayName,
+    password: password
 
-            const sheet =
-                workbook.Sheets["Transactions"];
-
-            const rows =
-                XLSX.utils.sheet_to_json(sheet);
-
-            imported.transactions =
-                rows.map(row => ({
-                    id: row.ID || id(),
-                    date: normalizeDate(row.Date),
-                    ledger: row.Ledger || "",
-                    description: row.Description || "",
-                    debit: Number(row.Debit || 0),
-                    credit: Number(row.Credit || 0)
-                }));
-
-        }
+  });
 
 
-        /* -------------------------
-           DAILY
-        ------------------------- */
+  if (!result.success) {
 
-        if (workbook.SheetNames.includes("Daily")) {
+    message.textContent =
+      result.message || "Unable to create account.";
 
-            const sheet =
-                workbook.Sheets["Daily"];
+    return;
 
-            const rows =
-                XLSX.utils.sheet_to_json(sheet);
-
-            imported.daily =
-                rows.map(row => ({
-                    date: normalizeDate(row.Date),
-                    actualClosing:
-                        Number(row["Actual Closing"] || 0)
-                }));
-
-        }
+  }
 
 
-        db = imported;
+  message.style.color = "#4ade80";
 
-        saveLocal();
-
-        document.getElementById("fileStatus")
-            .textContent = file.name;
-
-        renderAll();
-
-        alert("Excel loaded successfully.");
-
-    } catch (error) {
-
-        console.error(error);
-
-        alert(
-            "Could not read this Excel file."
-        );
-
-    }
-
-}
+  message.textContent =
+    "Account created. You can now login.";
 
 
-function normalizeDate(value) {
+  setTimeout(() => {
 
-    if (!value) return today();
+    showLogin();
 
-    if (typeof value === "string") {
+    document.getElementById("loginUsername")
+      .value = username;
 
-        if (value.includes("T")) {
-            return value.split("T")[0];
-        }
-
-        return value;
-    }
-
-    if (value instanceof Date) {
-
-        return value.toISOString().split("T")[0];
-
-    }
-
-    return today();
+  }, 800);
 
 }
 
 
 /* =========================================================
-   EXPORT EXCEL
-========================================================= */
+   SHOW / HIDE SCREENS
+   ========================================================= */
 
-function exportExcel() {
+function showLogin() {
 
-    const workbook = XLSX.utils.book_new();
+  document
+    .getElementById("loginScreen")
+    .classList.remove("hidden");
 
+  document
+    .getElementById("registerScreen")
+    .classList.add("hidden");
 
-    /* -------------------------
-       LEDGERS
-    ------------------------- */
+  document
+    .getElementById("appScreen")
+    .classList.add("hidden");
 
-    const ledgerRows = db.ledgers.map(l => ({
-        ID: l.id,
-        Ledger: l.name,
-        Type: l.type,
-        "Opening Balance": l.opening
-    }));
-
-
-    const ledgerSheet =
-        XLSX.utils.json_to_sheet(ledgerRows);
-
-    XLSX.utils.book_append_sheet(
-        workbook,
-        ledgerSheet,
-        "Ledgers"
-    );
+}
 
 
-    /* -------------------------
-       TRANSACTIONS
-    ------------------------- */
+function showRegister() {
 
-    const transactionRows =
-        db.transactions.map(t => ({
-            ID: t.id,
-            Date: t.date,
-            Ledger: t.ledger,
-            Description: t.description,
-            Debit: t.debit,
-            Credit: t.credit
-        }));
+  document
+    .getElementById("loginScreen")
+    .classList.add("hidden");
+
+  document
+    .getElementById("registerScreen")
+    .classList.remove("hidden");
+
+}
 
 
-    const transactionSheet =
-        XLSX.utils.json_to_sheet(transactionRows);
+function showApp() {
 
-    XLSX.utils.book_append_sheet(
-        workbook,
-        transactionSheet,
-        "Transactions"
-    );
+  document
+    .getElementById("loginScreen")
+    .classList.add("hidden");
+
+  document
+    .getElementById("registerScreen")
+    .classList.add("hidden");
+
+  document
+    .getElementById("appScreen")
+    .classList.remove("hidden");
 
 
-    /* -------------------------
-       DAILY
-    ------------------------- */
+  document
+    .getElementById("welcomeUser")
+    .textContent =
+      currentUser.display_name ||
+      currentUser.displayName ||
+      currentUser.username ||
+      "";
 
-    const dates = getAllDates();
 
-    const dailyRows = dates.map(date => {
+  loadProjects();
 
-        const calc = calculateDay(date);
+}
 
-        return {
-            Date: date,
-            "Opening Balance": calc.opening,
-            Receipts: calc.receipts,
-            Payments: calc.payments,
-            "Expected Closing": calc.expected,
-            "Actual Closing":
-                calc.actual === null
-                    ? ""
-                    : calc.actual,
-            Difference:
-                calc.actual === null
-                    ? ""
-                    : calc.difference,
-            Status:
-                calc.actual === null
-                    ? "Pending"
-                    : Math.abs(calc.difference) < 0.01
-                        ? "Reconciled"
-                        : "Difference"
-        };
+
+/* =========================================================
+   LOGOUT
+   ========================================================= */
+
+function logout() {
+
+  currentUser = null;
+
+  projects = [];
+
+  localStorage.removeItem("kodiak_user");
+
+  showLogin();
+
+}
+
+
+/* =========================================================
+   PROJECTS
+   ========================================================= */
+
+async function loadProjects() {
+
+  const container =
+    document.getElementById("projectsList");
+
+  container.innerHTML =
+    `<div class="empty-state">Loading projects...</div>`;
+
+
+  const userId =
+    currentUser.id ||
+    currentUser.user_id;
+
+
+  const result =
+    await api("getProjects", {
+
+      user_id: userId
 
     });
 
 
-    const dailySheet =
-        XLSX.utils.json_to_sheet(dailyRows);
-
-    XLSX.utils.book_append_sheet(
-        workbook,
-        dailySheet,
-        "Daily"
-    );
-
-
-    /* -------------------------
-       DOWNLOAD
-    ------------------------- */
-
-    XLSX.writeFile(
-        workbook,
-        "Expense_Tracker.xlsx",
-        {
-            compression: true
-        }
-    );
-
-}
-
-
-/* =========================================================
-   LEDGERS
-========================================================= */
-
-function openLedgerModal() {
-
-    document
-        .getElementById("ledgerModal")
-        .classList.add("show");
-
-}
-
-
-function saveLedger() {
-
-    const name =
-        document
-            .getElementById("ledgerName")
-            .value
-            .trim();
-
-    const type =
-        document
-            .getElementById("ledgerType")
-            .value;
-
-    const opening =
-        Number(
-            document
-                .getElementById("ledgerOpening")
-                .value
-        ) || 0;
-
-
-    if (!name) {
-
-        alert("Enter a ledger name.");
-
-        return;
-
-    }
-
-
-    const exists =
-        db.ledgers.some(
-            l =>
-                l.name.toLowerCase() ===
-                name.toLowerCase()
-        );
-
-
-    if (exists) {
-
-        alert("This ledger already exists.");
-
-        return;
-
-    }
-
-
-    db.ledgers.push({
-        id: id(),
-        name,
-        type,
-        opening
-    });
-
-
-    saveLocal();
-
-    closeModal("ledgerModal");
-
-    document
-        .getElementById("ledgerName")
-        .value = "";
-
-    renderAll();
-
-}
-
-
-function renderLedgers() {
-
-    const grid =
-        document.getElementById("ledgerGrid");
-
-    if (!db.ledgers.length) {
-
-        grid.innerHTML =
-            `<div class="empty">
-                No ledgers yet.
-             </div>`;
-
-        return;
-    }
-
-
-    grid.innerHTML =
-        db.ledgers.map(l => {
-
-            return `
-                <div class="ledger">
-
-                    <div class="ledger-name">
-                        ${escapeHtml(l.name)}
-                    </div>
-
-                    <div class="ledger-type">
-                        ${escapeHtml(l.type)}
-                    </div>
-
-                    <div class="ledger-opening">
-                        ${money(l.opening)}
-                    </div>
-
-                </div>
-            `;
-
-        }).join("");
-
-}
-
-
-/* =========================================================
-   TRANSACTIONS
-========================================================= */
-
-function openTransactionModal() {
-
-    populateLedgerSelect();
-
-    document
-        .getElementById("txDate")
-        .value = currentDate;
-
-    document
-        .getElementById("txDescription")
-        .value = "";
-
-    document
-        .getElementById("txDebit")
-        .value = "";
-
-    document
-        .getElementById("txCredit")
-        .value = "";
-
-    document
-        .getElementById("transactionModal")
-        .classList.add("show");
-
-}
-
-
-function populateLedgerSelect() {
-
-    const select =
-        document.getElementById("txLedger");
-
-    select.innerHTML =
-        db.ledgers.map(l => {
-
-            return `
-                <option value="${escapeAttr(l.name)}">
-                    ${escapeHtml(l.name)}
-                </option>
-            `;
-
-        }).join("");
-
-}
-
-
-function saveTransaction() {
-
-    const date =
-        document.getElementById("txDate").value;
-
-    const ledger =
-        document.getElementById("txLedger").value;
-
-    const description =
-        document
-            .getElementById("txDescription")
-            .value
-            .trim();
-
-    const debit =
-        Number(
-            document.getElementById("txDebit").value
-        ) || 0;
-
-    const credit =
-        Number(
-            document.getElementById("txCredit").value
-        ) || 0;
-
-
-    if (!date || !ledger) {
-
-        alert("Date and ledger are required.");
-
-        return;
-
-    }
-
-
-    if (debit > 0 && credit > 0) {
-
-        alert(
-            "Enter either Debit or Credit, not both."
-        );
-
-        return;
-
-    }
-
-
-    if (debit === 0 && credit === 0) {
-
-        alert("Enter an amount.");
-
-        return;
-
-    }
-
-
-    db.transactions.push({
-
-        id: id(),
-        date,
-        ledger,
-        description,
-        debit,
-        credit
-
-    });
-
-
-    saveLocal();
-
-    closeModal("transactionModal");
-
-    currentDate = date;
-
-    document
-        .getElementById("selectedDate")
-        .value = date;
-
-    renderAll();
-
-}
-
-
-function renderTransactions() {
-
-    const tbody =
-        document.getElementById(
-            "transactionsTable"
-        );
-
-
-    const transactions =
-        [...db.transactions]
-            .sort((a, b) =>
-                b.date.localeCompare(a.date)
-            );
-
-
-    if (!transactions.length) {
-
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="6"
-                    class="empty">
-                    No transactions.
-                </td>
-            </tr>
-        `;
-
-        return;
-
-    }
-
-
-    tbody.innerHTML =
-        transactions.map(t => {
-
-            return `
-                <tr>
-
-                    <td>${escapeHtml(t.date)}</td>
-
-                    <td>${escapeHtml(t.ledger)}</td>
-
-                    <td>${escapeHtml(t.description)}</td>
-
-                    <td>
-                        ${t.debit
-                            ? money(t.debit)
-                            : ""}
-                    </td>
-
-                    <td>
-                        ${t.credit
-                            ? money(t.credit)
-                            : ""}
-                    </td>
-
-                    <td>
-                        <button
-                            onclick="deleteTransaction('${t.id}')">
-                            Delete
-                        </button>
-                    </td>
-
-                </tr>
-            `;
-
-        }).join("");
-
-}
-
-
-function deleteTransaction(transactionId) {
-
-    if (!confirm("Delete this transaction?")) {
-        return;
-    }
-
-
-    db.transactions =
-        db.transactions.filter(
-            t => t.id !== transactionId
-        );
-
-
-    saveLocal();
-
-    renderAll();
-
-}
-
-
-/* =========================================================
-   DAILY CALCULATION
-========================================================= */
-
-function getOpeningBalance(date) {
-
-    const sorted =
-        [...getAllDates()]
-            .sort();
-
-
-    const previousDates =
-        sorted.filter(d => d < date);
-
-
-    if (!previousDates.length) {
-
-        const bank =
-            db.ledgers.find(
-                l =>
-                    l.type === "Asset" &&
-                    /bank/i.test(l.name)
-            );
-
-        return bank
-            ? Number(bank.opening || 0)
-            : 0;
-
-    }
-
-
-    const previousDate =
-        previousDates[previousDates.length - 1];
-
-    const previous =
-        calculateDay(previousDate);
-
-
-    if (previous.actual !== null) {
-
-        return previous.actual;
-
-    }
-
-
-    return previous.expected;
-
-}
-
-
-function calculateDay(date) {
-
-    const transactions =
-        db.transactions.filter(
-            t => t.date === date
-        );
-
-
-    const receipts =
-        transactions.reduce(
-            (sum, t) =>
-                sum + Number(t.credit || 0),
-            0
-        );
-
-
-    const payments =
-        transactions.reduce(
-            (sum, t) =>
-                sum + Number(t.debit || 0),
-            0
-        );
-
-
-    const opening =
-        getOpeningBalanceWithoutRecursion(date);
-
-
-    const expected =
-        opening +
-        receipts -
-        payments;
-
-
-    const daily =
-        db.daily.find(
-            d => d.date === date
-        );
-
-
-    const actual =
-        daily &&
-        daily.actualClosing !== undefined
-            ? Number(daily.actualClosing)
-            : null;
-
-
-    const difference =
-        actual === null
-            ? null
-            : actual - expected;
-
-
-    return {
-        opening,
-        receipts,
-        payments,
-        expected,
-        actual,
-        difference
-    };
-
-}
-
-
-/*
-    This calculates opening balance by walking
-    backwards to the last known actual closing.
-*/
-
-function getOpeningBalanceWithoutRecursion(date) {
-
-    const dates =
-        getAllDates()
-            .filter(d => d < date)
-            .sort()
-            .reverse();
-
-
-    for (const previousDate of dates) {
-
-        const daily =
-            db.daily.find(
-                d => d.date === previousDate
-            );
-
-
-        if (
-            daily &&
-            daily.actualClosing !== undefined &&
-            daily.actualClosing !== ""
-        ) {
-
-            return Number(
-                daily.actualClosing
-            );
-
-        }
-
-    }
-
-
-    const bank =
-        db.ledgers.find(
-            l =>
-                l.type === "Asset" &&
-                /bank/i.test(l.name)
-        );
-
-
-    return bank
-        ? Number(bank.opening || 0)
-        : 0;
-
-}
-
-
-/* =========================================================
-   DAILY UI
-========================================================= */
-
-function loadDay() {
-
-    currentDate =
-        document.getElementById(
-            "selectedDate"
-        ).value;
-
-    renderDaily();
-
-}
-
-
-function renderDaily() {
-
-    const calc =
-        calculateDay(currentDate);
-
-
-    document.getElementById(
-        "openingBalance"
-    ).textContent = money(calc.opening);
-
-
-    document.getElementById(
-        "dayReceipts"
-    ).textContent = money(calc.receipts);
-
-
-    document.getElementById(
-        "dayPayments"
-    ).textContent = money(calc.payments);
-
-
-    document.getElementById(
-        "expectedClosing"
-    ).textContent = money(calc.expected);
-
-
-    const actualInput =
-        document.getElementById(
-            "actualClosing"
-        );
-
-
-    actualInput.value =
-        calc.actual === null
-            ? ""
-            : calc.actual;
-
-
-    document.getElementById(
-        "dayDifference"
-    ).textContent =
-        calc.difference === null
-            ? "—"
-            : money(calc.difference);
-
-
-    renderDailyTransactions();
-
-}
-
-
-function renderDailyTransactions() {
-
-    const container =
-        document.getElementById(
-            "dailyTransactions"
-        );
-
-
-    const transactions =
-        db.transactions.filter(
-            t => t.date === currentDate
-        );
-
-
-    if (!transactions.length) {
-
-        container.innerHTML =
-            `<div class="empty">
-                No transactions.
-             </div>`;
-
-        return;
-
-    }
-
+  if (!result.success) {
 
     container.innerHTML =
-        transactions.map(t => {
+      `<div class="empty-state">
+        ${escapeHtml(result.message || "Unable to load projects.")}
+       </div>`;
 
-            const amount =
-                t.debit > 0
-                    ? t.debit
-                    : t.credit;
+    return;
 
-            const type =
-                t.debit > 0
-                    ? "debit"
-                    : "credit";
-
-            const sign =
-                t.debit > 0
-                    ? "-"
-                    : "+";
+  }
 
 
-            return `
-                <div class="transaction-item">
+  projects =
+    result.projects ||
+    result.data ||
+    [];
 
-                    <div class="tx-info">
 
-                        <strong>
-                            ${escapeHtml(
-                                t.description ||
-                                t.ledger
-                            )}
-                        </strong>
-
-                        <span>
-                            ${escapeHtml(t.ledger)}
-                        </span>
-
-                    </div>
-
-                    <div class="amount ${type}">
-                        ${sign}${money(amount)}
-                    </div>
-
-                </div>
-            `;
-
-        }).join("");
+  renderProjects();
 
 }
 
 
 /* =========================================================
-   ACTUAL CLOSING
-========================================================= */
+   RENDER PROJECTS
+   ========================================================= */
 
-function saveActualClosing() {
+function renderProjects() {
 
-    const value =
-        document.getElementById(
-            "actualClosing"
-        ).value;
+  const container =
+    document.getElementById("projectsList");
 
-
-    if (value === "") {
-
-        db.daily =
-            db.daily.filter(
-                d => d.date !== currentDate
-            );
-
-        saveLocal();
-
-        renderAll();
-
-        return;
-
-    }
-
-
-    const amount = Number(value);
-
-
-    const existing =
-        db.daily.find(
-            d => d.date === currentDate
-        );
-
-
-    if (existing) {
-
-        existing.actualClosing = amount;
-
-    } else {
-
-        db.daily.push({
-
-            date: currentDate,
-            actualClosing: amount
-
-        });
-
-    }
-
-
-    saveLocal();
-
-    renderAll();
-
-}
-
-
-function reconcileDay() {
-
-    const calc =
-        calculateDay(currentDate);
-
-
-    if (calc.actual === null) {
-
-        alert(
-            "Enter the actual bank closing balance first."
-        );
-
-        return;
-
-    }
-
-
-    if (
-        Math.abs(calc.difference) < 0.01
-    ) {
-
-        alert(
-            "✓ Day reconciled successfully."
-        );
-
-    } else {
-
-        alert(
-            "There is a difference of " +
-            money(calc.difference) +
-            "."
-        );
-
-    }
-
-}
-
-
-/* =========================================================
-   RECONCILIATION TABLE
-========================================================= */
-
-function renderReconciliation() {
-
-    const tbody =
-        document.getElementById(
-            "reconciliationTable"
-        );
-
-
-    const dates =
-        getAllDates().sort().reverse();
-
-
-    if (!dates.length) {
-
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="8"
-                    class="empty">
-                    No reconciliation data.
-                </td>
-            </tr>
-        `;
-
-        return;
-
-    }
-
-
-    tbody.innerHTML =
-        dates.map(date => {
-
-            const c =
-                calculateDay(date);
-
-
-            const status =
-                c.actual === null
-                    ? "Pending"
-                    : Math.abs(c.difference) < 0.01
-                        ? "Reconciled"
-                        : "Difference";
-
-
-            return `
-                <tr>
-
-                    <td>${date}</td>
-
-                    <td>${money(c.opening)}</td>
-
-                    <td>${money(c.receipts)}</td>
-
-                    <td>${money(c.payments)}</td>
-
-                    <td>${money(c.expected)}</td>
-
-                    <td>
-                        ${c.actual === null
-                            ? "—"
-                            : money(c.actual)}
-                    </td>
-
-                    <td>
-                        ${c.difference === null
-                            ? "—"
-                            : money(c.difference)}
-                    </td>
-
-                    <td>${status}</td>
-
-                </tr>
-            `;
-
-        }).join("");
-
-}
-
-
-/* =========================================================
-   DASHBOARD
-========================================================= */
-
-function renderDashboard() {
-
-    const calc =
-        calculateDay(currentDate);
-
-
-    document.getElementById(
-        "bankBalance"
-    ).textContent =
-        money(
-            calc.actual === null
-                ? calc.expected
-                : calc.actual
-        );
-
-
-    document.getElementById(
-        "todayDate"
-    ).textContent =
-        currentDate;
-
-
-    document.getElementById(
-        "difference"
-    ).textContent =
-        calc.difference === null
-            ? "—"
-            : money(calc.difference);
-
-
-    document.getElementById(
-        "reconStatus"
-    ).textContent =
-        calc.actual === null
-            ? "Pending"
-            : Math.abs(calc.difference) < 0.01
-                ? "Reconciled"
-                : "Difference";
-
-}
-
-
-/* =========================================================
-   DATE LIST
-========================================================= */
-
-function getAllDates() {
-
-    const dates = new Set();
-
-
-    db.transactions.forEach(
-        t => dates.add(t.date)
-    );
-
-
-    db.daily.forEach(
-        d => dates.add(d.date)
-    );
-
-
-    return [...dates];
-
-}
-
-
-/* =========================================================
-   MODALS
-========================================================= */
-
-function closeModal(id) {
-
+  const search =
     document
-        .getElementById(id)
-        .classList.remove("show");
+      .getElementById("searchBox")
+      .value
+      .toLowerCase()
+      .trim();
+
+
+  let filtered =
+    projects.filter(project => {
+
+      const name =
+        String(project.name || "")
+          .toLowerCase();
+
+      return name.includes(search);
+
+    });
+
+
+  if (!filtered.length) {
+
+    container.innerHTML =
+      `<div class="empty-state">
+        ${search
+          ? "No projects found."
+          : "No projects yet. Create your first project."}
+       </div>`;
+
+    return;
+
+  }
+
+
+  container.innerHTML =
+    filtered.map(project => {
+
+      const progress =
+        Number(project.progress || 0);
+
+
+      return `
+
+        <div
+          class="project-card"
+          onclick="openProject('${escapeAttribute(project.id)}')"
+        >
+
+          <div
+            class="project-color"
+            style="background:${escapeAttribute(
+              project.color || "#8b5cf6"
+            )}"
+          ></div>
+
+          <h3>
+            ${escapeHtml(project.name || "Untitled")}
+          </h3>
+
+          <p>
+            ${escapeHtml(
+              project.description || "No description"
+            )}
+          </p>
+
+          <div class="progress">
+
+            <div
+              class="progress-bar"
+              style="width:${Math.max(
+                0,
+                Math.min(100, progress)
+              )}%"
+            ></div>
+
+          </div>
+
+          <div class="progress-info">
+
+            <span>Progress</span>
+
+            <span>${progress}%</span>
+
+          </div>
+
+        </div>
+
+      `;
+
+    }).join("");
 
 }
 
 
 /* =========================================================
-   SECURITY / HTML HELPERS
-========================================================= */
+   CREATE PROJECT
+   ========================================================= */
+
+async function createProject() {
+
+  const name =
+    document.getElementById("projectName")
+      .value.trim();
+
+  const description =
+    document.getElementById("projectDescription")
+      .value.trim();
+
+  const color =
+    document.getElementById("projectColor")
+      .value;
+
+
+  if (!name) {
+
+    alert("Enter a project name.");
+
+    return;
+
+  }
+
+
+  const userId =
+    currentUser.id ||
+    currentUser.user_id;
+
+
+  const result =
+    await api("createProject", {
+
+      user_id: userId,
+
+      name: name,
+
+      description: description,
+
+      color: color
+
+    });
+
+
+  if (!result.success) {
+
+    alert(
+      result.message ||
+      "Unable to create project."
+    );
+
+    return;
+
+  }
+
+
+  closeProjectModal();
+
+
+  document.getElementById("projectName")
+    .value = "";
+
+  document.getElementById("projectDescription")
+    .value = "";
+
+
+  await loadProjects();
+
+}
+
+
+/* =========================================================
+   PROJECT MODAL
+   ========================================================= */
+
+function openProjectModal() {
+
+  document
+    .getElementById("projectModal")
+    .classList.remove("hidden");
+
+}
+
+
+function closeProjectModal() {
+
+  document
+    .getElementById("projectModal")
+    .classList.add("hidden");
+
+}
+
+
+/* =========================================================
+   PROJECT OPEN
+   ========================================================= */
+
+function openProject(id) {
+
+  const project =
+    projects.find(p => String(p.id) === String(id));
+
+
+  if (!project) return;
+
+
+  alert(
+    "Project opened:\n\n" +
+    project.name +
+    "\n\nTask hierarchy comes next."
+  );
+
+}
+
+
+/* =========================================================
+   SECURITY / DISPLAY HELPERS
+   ========================================================= */
 
 function escapeHtml(value) {
 
-    return String(value ?? "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 
 }
 
 
-function escapeAttr(value) {
+function escapeAttribute(value) {
 
-    return escapeHtml(value);
-
-}
-
-
-/* =========================================================
-   RENDER EVERYTHING
-========================================================= */
-
-function renderAll() {
-
-    renderDashboard();
-
-    renderDaily();
-
-    renderTransactions();
-
-    renderLedgers();
-
-    renderReconciliation();
+  return String(value ?? "")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 
 }
