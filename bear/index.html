@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BEAR — Daily Reflection</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <main class="app">
+
+    <header>
+      <div class="bear-icon">🐻</div>
+      <div>
+        <h1>BEAR</h1>
+        <p>Your day, remembered.</p>
+      </div>
+    </header>
+
+    <!-- INTRO -->
+    <section id="intro" class="screen active">
+      <div class="hero">
+        <div class="big-bear">🐻</div>
+        <h2>How was your day?</h2>
+        <p>
+          Tell me everything. The good, the bad,
+          the boring and the weird.
+        </p>
+        <button onclick="startReflection()">Tell Bear about today →</button>
+      </div>
+    </section>
+
+    <!-- QUESTIONS -->
+    <section id="questions" class="screen">
+
+      <div class="progress-area">
+        <span id="questionNumber">1 / 12</span>
+        <div class="progress">
+          <div id="progressBar"></div>
+        </div>
+      </div>
+
+      <div class="question-card">
+
+        <p id="questionCategory"></p>
+        <h2 id="questionText"></h2>
+        <p id="questionHint"></p>
+
+        <textarea
+          id="answer"
+          placeholder="Tell Bear..."
+          autocomplete="off">
+        </textarea>
+
+        <div class="buttons">
+          <button class="secondary" onclick="previousQuestion()">← Back</button>
+          <button onclick="nextQuestion()">Continue →</button>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- RATING -->
+    <section id="rating" class="screen">
+
+      <div class="rating-card">
+
+        <div class="big-bear">🐻</div>
+
+        <h2>Now, let's measure the day.</h2>
+        <p>Give Bear a rough feeling for each part.</p>
+
+        <div class="slider-group">
+          <label>Mood <span id="moodValue">5</span></label>
+          <input id="mood" type="range" min="1" max="10" value="5">
+        </div>
+
+        <div class="slider-group">
+          <label>Energy <span id="energyValue">5</span></label>
+          <input id="energy" type="range" min="1" max="10" value="5">
+        </div>
+
+        <div class="slider-group">
+          <label>Productivity <span id="productivityValue">5</span></label>
+          <input id="productivity" type="range" min="1" max="10" value="5">
+        </div>
+
+        <div class="slider-group">
+          <label>Mental state <span id="mentalValue">5</span></label>
+          <input id="mental" type="range" min="1" max="10" value="5">
+        </div>
+
+        <div class="slider-group">
+          <label>Relationships <span id="relationshipValue">5</span></label>
+          <input id="relationship" type="range" min="1" max="10" value="5">
+        </div>
+
+        <div class="slider-group">
+          <label>Personal growth <span id="growthValue">5</span></label>
+          <input id="growth" type="range" min="1" max="10" value="5">
+        </div>
+
+        <button onclick="generateReport()">🐻 Let Bear judge the day</button>
+
+      </div>
+
+    </section>
+
+    <!-- REPORT -->
+    <section id="report" class="screen">
+
+      <div class="report-card">
+
+        <p id="reportDate"></p>
+
+        <div class="score-circle">
+          <strong id="finalScore">0</strong>
+          <span>/100</span>
+        </div>
+
+        <h1 id="dayVerdict">GOOD DAY</h1>
+
+        <p id="bearObservation" class="observation"></p>
+
+        <div class="scores">
+
+          <div>
+            <span>Mood</span>
+            <strong id="rMood"></strong>
+          </div>
+
+          <div>
+            <span>Energy</span>
+            <strong id="rEnergy"></strong>
+          </div>
+
+          <div>
+            <span>Productivity</span>
+            <strong id="rProductivity"></strong>
+          </div>
+
+          <div>
+            <span>Mental</span>
+            <strong id="rMental"></strong>
+          </div>
+
+          <div>
+            <span>Relationships</span>
+            <strong id="rRelationship"></strong>
+          </div>
+
+          <div>
+            <span>Growth</span>
+            <strong id="rGrowth"></strong>
+          </div>
+
+        </div>
+
+        <div class="diary">
+          <h2>📖 Today's diary</h2>
+          <p id="diaryText"></p>
+        </div>
+
+        <div class="buttons">
+          <button class="secondary" onclick="showHistory()">History</button>
+          <button onclick="newDay()">Reflect on another day</button>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- HISTORY -->
+    <section id="history" class="screen">
+
+      <div class="history-card">
+
+        <h2>🐻 Bear remembers</h2>
+
+        <div id="historyList"></div>
+
+        <button class="secondary" onclick="showScreen('intro')">
+          ← Back
+        </button>
+
+      </div>
+
+    </section>
+
+  </main>
+
+  <script src="bear.js"></script>
+
+</body>
+</html>
